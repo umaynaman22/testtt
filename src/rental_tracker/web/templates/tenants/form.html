@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ 'Edit tenant' if tenant else 'Add tenant' }}{% endblock %}
+{% block content %}
+{{ m.page_head(('Edit ' ~ tenant.first_name ~ ' ' ~ tenant.last_name) if tenant else 'Add tenant', crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a>') }}
+<form method="post" class="card">
+  {{ m.csrf() }}
+  <div class="form-grid">
+    {{ m.input("first_name", "First name", required=True) }}
+    {{ m.input("last_name", "Last name", required=True) }}
+    {{ m.input("phone", "Phone") }}
+    {{ m.input("alt_phone", "Other phone") }}
+    {{ m.input("email", "Email", type="email") }}
+    {{ m.input("external_ref", "Tenant key", help="Your own ID (used by spreadsheet import)") }}
+    {{ m.input("emergency_contact_name", "Emergency contact") }}
+    {{ m.input("emergency_contact_phone", "Emergency phone") }}
+    {{ m.input("forwarding_address", "Forwarding address", wide=True, help="Needed to return the deposit after move-out") }}
+    {{ m.textarea("notes", "Notes") }}
+  </div>
+  <p class="note">Don't store Social Security numbers, full ID numbers or bank account numbers here. Attach screening reports as documents instead.</p>
+  <div class="actions"><button class="btn primary">{{ 'Save' if tenant else 'Add tenant' }}</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Rental Tracker{% endblock %} · Rental Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f5fbf' stroke-width='2.5'%3E%3Cpath d='M3 11l9-7 9 7'/%3E%3Cpath d='M5 10v10h14V10'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+<script src="{{ url_for('static', filename='vendor/htmx.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+{% macro nav(endpoint, text, prefixes=None, count=None) -%}
+  {%- set prefixes = prefixes or [endpoint] -%}
+  {%- set ns = namespace(active=false) -%}
+  {%- for p in prefixes %}{% if request.endpoint and request.endpoint.startswith(p) %}{% set ns.active = true %}{% endif %}{% endfor -%}
+  <a href="{{ url_for(endpoint) }}" class="{{ 'active' if ns.active }}"{% if ns.active %} aria-current="page"{% endif %}>{{ text }}{% if count %}<span class="count">{{ count }}</span>{% endif %}</a>
+{%- endmacro %}
+<aside class="sidebar">
+  <a class="brand" href="{{ url_for('main.dashboard') }}">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>
+    Rental Tracker</a>
+  <form class="search" action="{{ url_for('main.search') }}" role="search">
+    <input id="global-search" name="q" placeholder="Search  (Ctrl+K)" aria-label="Search" value="{{ request.args.get('q', '') if request.endpoint == 'main.search' else '' }}">
+  </form>
+  <nav aria-label="Main">
+    <div class="nav-group">Daily</div>
+    {{ nav('main.dashboard', 'Dashboard') }}
+    {{ nav('rentday.index', 'Rent Day', ['rentday.index', 'rentday.pay']) }}
+    {{ nav('rentday.late_fees', 'Late fees') }}
+    {{ nav('rentday.payments', 'Payments', ['rentday.payments', 'rentday.receipt']) }}
+    <div class="nav-group">Portfolio</div>
+    {{ nav('properties.index', 'Properties', ['properties.index', 'properties.new', 'properties.detail', 'properties.edit', 'properties.unit']) }}
+    {{ nav('tenants.index', 'Tenants', ['tenants.']) }}
+    {{ nav('leases.index', 'Leases', ['leases.']) }}
+    {{ nav('properties.owners', 'Owners', ['properties.owner']) }}
+    <div class="nav-group">Money</div>
+    {{ nav('expenses.index', 'Expenses', ['expenses.index', 'expenses.detail']) }}
+    {{ nav('expenses.vendors', 'Vendors', ['expenses.vendor']) }}
+    {{ nav('reports.index', 'Reports', ['reports.']) }}
+    <div class="nav-group">System</div>
+    {{ nav('admin.import_page', 'Import', ['admin.import']) }}
+    {{ nav('admin.backups', 'Backups', ['admin.backup']) }}
+    {{ nav('admin.settings', 'Settings', ['admin.settings', 'admin.categories']) }}
+    {{ nav('admin.audit', 'Audit log') }}
+  </nav>
+  <div class="foot">v{{ version }} · works offline</div>
+</aside>
+<main id="main">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="flash {{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">{{ message }}</div>{% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

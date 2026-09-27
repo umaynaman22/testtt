@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+{% call m.page_head("Settings") %}<a class="btn" href="{{ url_for('admin.categories') }}">Expense categories</a>{% endcall %}
+<div class="split">
+  <form method="post" class="card">
+    {{ m.csrf() }}
+    <div class="form-grid" style="grid-template-columns: minmax(0, 1fr)">
+      {% for key, label, kind, extra in settings %}
+        {% if kind == 'choice' %}{{ m.select(key, label, extra) }}
+        {% elif kind == 'int' %}{{ m.input(key, label, type="number", help=extra, attrs='min="0"') }}
+        {% elif kind == 'money' %}{{ m.money(key, label, help=extra) }}
+        {% elif kind == 'date' %}{{ m.date(key, label, help=extra) }}
+        {% else %}{{ m.input(key, label, help=extra) }}{% endif %}
+      {% endfor %}
+    </div>
+    <div class="actions"><button class="btn primary">Save settings</button></div>
+  </form>
+  <div class="card"><h2>About this installation</h2>
+    <dl class="kv small">
+      <dt>Data folder</dt><dd><code>{{ data_dir }}</code></dd>
+      <dt>Database</dt><dd><code>rental.db</code> · schema v{{ schema }}</dd>
+      <dt>App version</dt><dd>{{ version }}</dd>
+    </dl>
+    <p class="small muted">To move to another computer: install the app there, copy this whole folder across, and start the app with <code>--data-dir</code> pointing at it.</p>
+  </div>
+</div>
+{% endblock %}

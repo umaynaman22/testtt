@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Receipt {{ p.receipt_number }}{% endblock %}
+{% block content %}
+<div class="actions no-print" style="margin:0 0 14px">
+  <a class="btn" href="{{ url_for('leases.detail', lease_id=p.lease_id) }}">← Back to lease</a>
+  <button class="btn primary" data-print>Print / Save as PDF</button>
+</div>
+<article class="doc">
+  {% if p.voided_at %}<div class="flash error">VOID — {{ p.void_reason }}</div>{% endif %}
+  <div class="doc-head">
+    <div><h1>Rent receipt</h1><p class="muted">No. {{ p.receipt_number }}</p></div>
+    <div style="text-align:right"><strong>{{ p.owner_name }}</strong><br>{{ p.owner_address or '' }}<br>{{ p.owner_phone or '' }}</div>
+  </div>
+  <p>Received from <strong>{{ p.tenants }}</strong></p>
+  <p class="amount">{{ p.amount_cents|money }}</p>
+  <dl class="kv">
+    <dt>Date received</dt><dd>{{ p.received_date|fdate }}</dd>
+    <dt>Method</dt><dd>{{ p.method|label }}{% if p.reference %} #{{ p.reference }}{% endif %}</dd>
+    <dt>For</dt><dd>{{ p.address_line1 }}{% if p.unit_label != 'Main' %}, unit {{ p.unit_label }}{% endif %}, {{ p.city }}, {{ p.state }} {{ p.postal_code }}</dd>
+    <dt>Account balance today</dt><dd>{{ balance|money }}{% if balance < 0 %} (credit){% endif %}</dd>
+    {% if p.notes %}<dt>Note</dt><dd>{{ p.notes }}</dd>{% endif %}
+  </dl>
+  <p style="margin-top:40px">Received by: ______________________________</p>
+</article>
+{% endblock %}

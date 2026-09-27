@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Vendors{% endblock %}
+{% block content %}
+{% call m.page_head("Vendors", rows|length ~ " vendors") %}<a class="btn primary" href="{{ url_for('expenses.vendor_new') }}">Add vendor</a>{% endcall %}
+<form class="filters" method="get"><label class="field"><span>Search</span><input name="q" value="{{ request.args.get('q', '') }}" placeholder="Name, trade, phone"></label><button class="btn">Search</button></form>
+{% if rows %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Name</th><th>Trade</th><th>Phone</th><th>Email</th><th>1099</th><th>Insurance expires</th><th class="num">Paid {{ today.year }}</th></tr></thead>
+  <tbody>{% for v in rows %}<tr>
+    <td><a href="{{ url_for('expenses.vendor_detail', vendor_id=v.id) }}">{{ v.name }}</a> {% if not v.is_active %}<span class="badge">Inactive</span>{% endif %}</td>
+    <td>{{ v.trade or '' }}</td><td class="nowrap">{{ v.phone or '' }}</td><td>{{ v.email or '' }}</td>
+    <td>{{ 'Yes' if v.needs_1099 }}</td>
+    <td class="nowrap {{ 'neg' if v.insurance_expires and v.insurance_expires < today.isoformat() }}">{{ v.insurance_expires|fdate }}</td>
+    <td class="num">{{ v.paid_cents|money(true) }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="card empty">No vendors yet. They are added automatically when you enter an expense.</div>{% endif %}
+{% endblock %}

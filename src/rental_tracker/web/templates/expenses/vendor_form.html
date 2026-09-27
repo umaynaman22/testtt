@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ vendor.name if vendor else 'Add vendor' }}{% endblock %}
+{% block content %}
+{{ m.page_head(('Edit ' ~ vendor.name) if vendor else 'Add vendor', crumbs='<a href="' ~ url_for('expenses.vendors') ~ '">Vendors</a>') }}
+<form method="post" class="card">
+  {{ m.csrf() }}
+  <div class="form-grid">
+    {{ m.input("name", "Name", required=True) }}
+    {{ m.input("trade", "Trade", placeholder="Plumber, HVAC…") }}
+    {{ m.input("contact_name", "Contact person") }}
+    {{ m.input("phone", "Phone") }}
+    {{ m.input("email", "Email", type="email") }}
+    {{ m.input("address", "Address") }}
+    {{ m.input("license_number", "License #") }}
+    {{ m.date("insurance_expires", "Insurance expires") }}
+    {{ m.input("tax_id_last4", "Tax ID last 4", attrs='maxlength="4"') }}
+    {{ m.checkbox("needs_1099", "Send a 1099", values.get('needs_1099') in ['1', 1, 'on']) }}
+    {{ m.checkbox("is_active", "Active", values.get('is_active') in ['1', 1, 'on']) }}
+    {{ m.textarea("notes", "Notes") }}
+  </div>
+  <div class="actions"><button class="btn primary">Save</button></div>
+</form>
+{% endblock %}

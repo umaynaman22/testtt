@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Late fees{% endblock %}
+{% block content %}
+{{ m.page_head("Late fee review", "Rent still unpaid after the grace period. Approve to charge the fee, or waive it — a waived month is never suggested again.") }}
+{% if cands %}
+<form method="post">
+  {{ m.csrf() }}
+  <div class="table-wrap"><table>
+    <thead><tr><th><input type="checkbox" data-check-all="key" checked aria-label="Select all"></th><th>Unit</th><th>Tenants</th><th>Rent for</th><th>Was due</th><th class="num">Unpaid after grace</th><th class="num">Fee</th></tr></thead>
+    <tbody>{% for c in cands %}<tr>
+      <td><input type="checkbox" name="key" value="{{ c.key }}" checked aria-label="Select {{ c.property_code }} {{ c.period }}"></td>
+      <td>{{ c.property_code }} · {{ c.unit_label }}</td>
+      <td><a href="{{ url_for('leases.detail', lease_id=c.lease_id) }}">{{ c.tenants }}</a></td>
+      <td>{{ (c.period ~ '-01')|fdate("%B %Y") }}</td><td class="nowrap">{{ c.rent_due|fdate }}</td>
+      <td class="num neg">{{ c.unpaid_cents|money }}</td><td class="num">{{ c.fee_cents|money }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr class="total"><td colspan="6">{{ cands|length }} fees</td><td class="num">{{ total|money }}</td></tr></tfoot>
+  </table></div>
+  <div class="actions">
+    <button class="btn primary" name="action" value="approve">Charge selected fees</button>
+    <button class="btn" name="action" value="waive" data-confirm="Waive the selected late fees?">Waive selected</button>
+  </div>
+</form>
+{% else %}<div class="card empty">No late fees to review. Everyone paid within their grace period, or fees are already handled.</div>{% endif %}
+<p class="small muted" style="margin-top:14px">Fees follow each lease's terms. To post fees automatically instead, change "Late fee mode" in Settings.</p>
+{% endblock %}

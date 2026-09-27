@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Import{% endblock %}
+{% block content %}
+{{ m.page_head("Import from spreadsheets", "Bring in all your properties, units, tenants and leases at once. Nothing is saved until the check passes.") }}
+{% if result %}
+<div class="card">
+  {% if result.committed %}<h2 class="pos">Imported</h2>
+  {% elif result.errors %}<h2 class="neg">{{ result.errors|length }} problem{{ 's' if result.errors|length != 1 }} to fix — nothing was saved</h2>
+  {% else %}<h2>Check passed — ready to import</h2>{% endif %}
+  {% if result.counts %}<table style="max-width:520px"><thead><tr><th>File</th><th class="num">New</th><th class="num">Updated</th><th class="num">Already there</th></tr></thead><tbody>
+    {% for k, c in result.counts.items() %}<tr><td>{{ k }}.csv</td><td class="num">{{ c.created }}</td><td class="num">{{ c.updated }}</td><td class="num">{{ c.skipped }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  {% for w in result.warnings %}<p class="small muted">{{ w }}</p>{% endfor %}
+  {% if result.errors %}<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>File</th><th class="num">Row</th><th>Problem</th></tr></thead><tbody>
+    {% for e in result.errors %}<tr><td>{{ e.file }}.csv</td><td class="num">{{ e.row }}</td><td>{{ e.message }}</td></tr>{% endfor %}</tbody></table></div>
+    <p class="small muted">Row numbers match your spreadsheet (the header is row 1). Fix the files and check again.</p>{% endif %}
+  {% if token %}<form method="post" action="{{ url_for('admin.import_commit') }}" data-confirm="Import these records now? A backup is taken first.">
+    {{ m.csrf() }}<input type="hidden" name="token" value="{{ token }}">
+    <div class="actions"><button class="btn primary">Import now</button></div></form>{% endif %}
+</div>
+{% endif %}
+<div class="split">
+  <form method="post" enctype="multipart/form-data" class="card">
+    <h2>1. Choose your files</h2>
+    {{ m.csrf() }}
+    <p class="small muted">You don't need every file. Each file can refer to records in the files above it. Excel: File → Save As → CSV UTF-8.</p>
+    <div class="form-grid" style="grid-template-columns: minmax(0, 1fr)">
+      {% for kind in kinds %}
+      <label class="field"><span>{{ kind }}.csv</span><input type="file" name="{{ kind }}" accept=".csv,text/csv">
+        {% if help.get(kind) %}<small>{{ help[kind] }}</small>{% endif %}</label>
+      {% endfor %}
+    </div>
+    <div class="actions"><button class="btn primary">2. Check files</button></div>
+  </form>
+  <div class="card">
+    <h2>Templates</h2>
+    <p class="small">Download a template, fill it in (keep the header row), and save it as CSV. Columns marked * are required.</p>
+    <ul class="small" style="padding-left:18px">
+      {% for kind in kinds %}<li><a href="{{ url_for('admin.import_template', kind=kind) }}">{{ kind }}.csv</a>
+        <div class="muted">{{ templates[kind].columns|join(', ') }}</div></li>{% endfor %}
+    </ul>
+    <h3>Switching over</h3>
+    <ul class="small" style="padding-left:18px">
+      <li>Pick a cutover date on the 1st of a month.</li>
+      <li>Import what each tenant owed <em>before</em> that month as an opening balance — not years of history.</li>
+      <li>Run the app next to your spreadsheet for a month or two until the balances match.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

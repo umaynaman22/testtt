@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Rent Day{% endblock %}
+{% block content %}
+{% call m.page_head("Rent Day — " ~ (period ~ '-01')|fdate("%B %Y"), "Type an amount, press Enter to save and jump to the next row. The amount is pre-filled with what each lease owes.") %}
+  <a class="btn" href="{{ url_with(period=prev) }}">← {{ (prev ~ '-01')|fdate("%b") }}</a>
+  <a class="btn" href="{{ url_with(period=next) }}">{{ (next ~ '-01')|fdate("%b") }} →</a>
+  <form method="post" action="{{ url_for('rentday.post_rent') }}">{{ m.csrf() }}<input type="hidden" name="period" value="{{ period }}"><button class="btn">Bill rent now</button></form>
+{% endcall %}
+<section class="kpis">
+  <div class="kpi"><div class="label">Billed for {{ (period ~ '-01')|fdate("%B") }}</div><div class="value">{{ totals.billed|money }}</div><div class="sub">rent and recurring charges</div></div>
+  {% set pctv = (100 * totals.paid / totals.billed) if totals.billed else 0 %}
+  <div class="kpi"><div class="label">Paid toward {{ (period ~ '-01')|fdate("%B") }}</div><div class="value">{{ totals.paid|money }}</div>
+    <div class="sub">{{ pctv|round(0)|int }}% · {{ totals.received|money }} cash received this month</div>
+    <div class="meter {{ 'ok' if pctv >= 95 else ('warn' if pctv >= 70 else 'bad') }}"><span style="width: {{ [pctv, 100]|min }}%"></span></div></div>
+  <div class="kpi"><div class="label">Still owed (all months)</div><div class="value {{ 'neg' if totals.owed }}">{{ totals.owed|money }}</div><div class="sub">{{ totals.unpaid }} leases not paid up</div></div>
+</section>
+<form class="filters" method="get"><input type="hidden" name="period" value="{{ period }}">
+  <label class="field"><span>Search</span><input name="q" value="{{ request.args.get('q', '') }}" placeholder="Property, unit, tenant"></label>
+  <label class="field"><span>Tag</span><select name="tag"><option value="">All</option>{% for t in tags %}<option value="{{ t.id }}" {{ 'selected' if request.args.get('tag') == t.id|string }}>{{ t.name }}</option>{% endfor %}</select></label>
+  <label class="field"><span>Show</span><select name="show">{% for v, t in [('all', 'Everyone'), ('unpaid', 'Not paid up'), ('paid', 'Paid up')] %}<option value="{{ v }}" {{ 'selected' if show == v }}>{{ t }}</option>{% endfor %}</select></label>
+  <button class="btn">Filter</button>
+</form>
+{% if rows %}
+<div class="table-wrap rentday"><table>
+  <thead><tr><th>Unit</th><th>Tenants</th><th class="num">This month</th><th class="num">Balance</th><th>Amount</th><th>Date</th><th>Method</th><th>Ref</th><th></th></tr></thead>
+  <tbody>
+    {% for r in rows %}{% set saved = none %}{% set error = none %}{% set method = none %}{% include "rentday/_row.html" %}{% endfor %}
+  </tbody></table></div>
+{% else %}<div class="card empty">No current leases{% if request.args.get('q') or request.args.get('tag') or show != 'all' %} match these filters{% endif %}.</div>{% endif %}
+{% endblock %}

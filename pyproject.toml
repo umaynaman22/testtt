@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rental-tracker"
+version = "0.1.0"
+description = "Offline rental property tracker for 50+ properties"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["flask>=3.0"]
+
+[project.optional-dependencies]
+desktop = ["pywebview>=5.0"]
+dev = ["pytest>=8", "hypothesis>=6"]
+
+[project.scripts]
+rental-tracker = "rental_tracker.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rental_tracker = ["db/migrations/*.sql", "web/templates/**/*.html", "web/static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Problem{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px">
+  <h1>{{ error.code }} — {{ error.name if error.name else 'Something went wrong' }}</h1>
+  <p>{{ error.description if error.description else 'An unexpected error happened. Your data is safe; the change was not saved.' }}</p>
+  <div class="actions"><a class="btn" href="#" data-back>Go back</a> <a class="btn" href="{{ url_for('main.dashboard') }}">Dashboard</a></div>
+</div>
+{% endblock %}

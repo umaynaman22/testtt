@@ -1,5 +1,5 @@
 -- =============================================================================
--- Rental Tracker — SQLite schema (v1)
+-- Rental Tracker — SQLite schema, migration 0001
 -- See docs/BLUEPRINT.md for the reasoning behind each table and rule.
 --
 -- Conventions
@@ -11,12 +11,10 @@
 --     never deleted — they are voided (voided_at + void_reason).
 --   * Balances are always derived from the ledger, never stored.
 --
--- Every connection must run:  PRAGMA foreign_keys = ON;  PRAGMA busy_timeout = 5000;
+-- Applied by rental_tracker.db.migrate(), which wraps it in a transaction and
+-- sets PRAGMA user_version. Every connection runs foreign_keys=ON, busy_timeout
+-- and journal_mode=WAL (see rental_tracker/db/__init__.py).
 -- =============================================================================
-
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-PRAGMA user_version = 1;
 
 -- -----------------------------------------------------------------------------
 -- Portfolio
@@ -110,6 +108,7 @@ CREATE TABLE tenants (
     email                    TEXT,
     phone                    TEXT,
     alt_phone                TEXT,
+    external_ref             TEXT UNIQUE,          -- your own ID from the import spreadsheet (tenant_key)
     emergency_contact_name   TEXT,
     emergency_contact_phone  TEXT,
     forwarding_address       TEXT,                 -- needed to return the deposit after move-out
@@ -129,6 +128,7 @@ CREATE TABLE leases (
     move_in_date           TEXT,
     move_out_date          TEXT,
     notice_given_date      TEXT,
+    billing_start_date     TEXT,                   -- first day rent is billed in this app (import cutover); NULL = start_date
     rent_cents             INTEGER NOT NULL CHECK (rent_cents >= 0),   -- starting rent; later changes in lease_rent_changes
     rent_due_day           INTEGER NOT NULL DEFAULT 1 CHECK (rent_due_day BETWEEN 1 AND 28),
     prorate_partial_months INTEGER NOT NULL DEFAULT 1 CHECK (prorate_partial_months IN (0,1)),
@@ -687,6 +687,7 @@ INSERT INTO settings (key, value) VALUES
     ('rent_post_days_before_due',  '0'),         -- post rent this many days before its due date
     ('proration_method',           'actual_days'), -- or 'thirty_day_month'
     ('late_fee_mode',              'review'),    -- 'review' = queue for approval, 'auto' = post immediately
+    ('expired_lease_action',       'month_to_month'), -- or 'leave_active'
     ('payment_application_order',  'oldest_first_rent_before_fees'),
     ('late_fee_min_balance_cents', '0'),         -- unpaid rent must exceed this to trigger a fee
     ('deposit_return_days',        '30'),        -- legal deadline to return deposits after move-out

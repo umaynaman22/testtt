@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ 'Edit ' ~ prop.code if prop else 'Add property' }}{% endblock %}
+{% block content %}
+{{ m.page_head(('Edit ' ~ prop.code) if prop else 'Add property', crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a>') }}
+<form method="post" class="card">
+  {{ m.csrf() }}
+  <fieldset><legend>Basics</legend>
+    <div class="form-grid">
+      {{ m.input("code", "Code", required=True, help="Short unique ID, e.g. MAPLE-12") }}
+      {{ m.input("name", "Name", required=True) }}
+      {{ m.select("owner_id", "Owner", owner_options, required=True) }}
+      {{ m.select("property_type", "Type", types, required=True) }}
+      {% if not prop %}{{ m.input("units", "Units", help="Comma-separated, e.g. A, B, C. Leave blank for one unit.", placeholder="Main") }}{% endif %}
+      {{ m.input("tags", "Tags", help="Comma-separated, e.g. North side, Section 8") }}
+      {% if prop %}{{ m.select("status", "Status", statuses) }}{{ m.date("sold_date", "Sold date") }}{% endif %}
+    </div>
+  </fieldset>
+  <fieldset><legend>Address</legend>
+    <div class="form-grid">
+      {{ m.input("address_line1", "Street address", required=True) }}
+      {{ m.input("address_line2", "Address line 2") }}
+      {{ m.input("city", "City", required=True) }}
+      {{ m.input("state", "State / region", required=True) }}
+      {{ m.input("postal_code", "ZIP / postal code", required=True) }}
+      {{ m.input("parcel_number", "Parcel number") }}
+      {{ m.input("year_built", "Year built", type="number") }}
+      {{ m.input("hoa_name", "HOA") }}
+    </div>
+  </fieldset>
+  <fieldset><legend>Purchase and value <span class="muted small">(optional — used for performance and depreciation)</span></legend>
+    <div class="form-grid">
+      {{ m.date("purchase_date", "Purchase date") }}
+      {{ m.money("purchase_price", "Purchase price") }}
+      {{ m.money("land_value", "Land value", help="Not depreciable") }}
+      {{ m.date("placed_in_service_date", "Placed in service") }}
+      {{ m.money("cash_invested", "Cash invested", help="Down payment + closing + rehab") }}
+      {{ m.money("estimated_value", "Estimated value today") }}
+      {{ m.date("value_as_of", "Value as of") }}
+    </div>
+  </fieldset>
+  <div class="form-grid">{{ m.textarea("notes", "Notes") }}</div>
+  <div class="actions"><button class="btn primary">{{ 'Save changes' if prop else 'Create property' }}</button>
+    <a class="btn" href="{{ url_for('properties.detail', pid=prop.id) if prop else url_for('properties.index') }}">Cancel</a></div>
+</form>
+{% endblock %}

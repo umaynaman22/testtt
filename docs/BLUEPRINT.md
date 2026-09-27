@@ -2,7 +2,9 @@
 
 This plan is for a desktop app that runs entirely on your own computer. It needs no internet, no subscription and no cloud account. It is sized for **50 to 500+ properties** and one person or a small office.
 
-The companion file [`schema.sql`](schema.sql) is the full SQLite database design. It runs as-is: it has been loaded into SQLite and tested against a sample 60-property portfolio.
+The database design lives in [`0001_initial.sql`](../src/rental_tracker/db/migrations/0001_initial.sql). It is the app's first migration, so the app and this document share one schema.
+
+**Status:** the core app (phases 0–3 of the roadmap) is built and tested. See [§18](#18-build-status) for what exists today and what is still planned, and the [README](../README.md) to run it.
 
 ---
 
@@ -25,6 +27,7 @@ The companion file [`schema.sql`](schema.sql) is the full SQLite database design
 15. [Build roadmap](#15-build-roadmap)
 16. [Future ideas](#16-future-ideas)
 17. [Decisions for you to make before building](#17-decisions-for-you-to-make-before-building)
+18. [Build status](#18-build-status)
 
 ---
 
@@ -53,7 +56,7 @@ The companion file [`schema.sql`](schema.sql) is the full SQLite database design
 | Decision | Choice | Why |
 |---|---|---|
 | App type | Local web app shown in a desktop window | Rich UI with simple tech; no separate server to install |
-| Language | Python 3.12+ | Readable, huge library ecosystem, easy for one person to maintain |
+| Language | Python 3.11+ | Readable, huge library ecosystem, easy for one person to maintain |
 | Database | SQLite (single file, WAL mode) | Zero setup, very reliable, handles millions of rows |
 | UI | Server-rendered HTML + HTMX | Fast and simple; no JavaScript build pipeline |
 | Money | Integer cents | No floating-point rounding errors |
@@ -93,15 +96,15 @@ A small desktop wrapper (**pywebview**) opens the app in a native window, so it 
 
 | Area | Pick | Notes |
 |---|---|---|
-| Runtime | Python 3.12+ | |
-| Web framework | Flask 3 + Jinja2 | Server-rendered pages; WTForms for validation, Flask-WTF for CSRF |
+| Runtime | Python 3.11+ | |
+| Web framework | Flask 3 + Jinja2 | Server-rendered pages. Form validation and CSRF protection are small in-house helpers, so Flask is the only required dependency |
 | Interactivity | HTMX (vendored file) | Inline edits, batch-entry grids and live filters without a single-page-app framework |
-| Styling | Pico.css or hand-written CSS (vendored) | Includes light and dark mode and print styles |
-| Charts | Chart.js (vendored) | Dashboard graphs |
-| Database | SQLite 3 via SQLAlchemy 2.0 | WAL mode, foreign keys on, FTS5 for search |
-| Migrations | Alembic | Every schema change is versioned, and a backup is taken before migrating |
-| PDFs | fpdf2 | Pure Python, so it packages easily. Used for receipts, notices, statements and batch letters |
-| Excel/CSV | openpyxl + `csv` module | Import and export |
+| Styling | Hand-written CSS (local file) | Includes light and dark mode and print styles |
+| Charts | Server-rendered CSS bars | Dashboard progress bars need no chart library; Chart.js (vendored) can be added for trend charts later |
+| Database | SQLite 3 via Python's built-in `sqlite3` | WAL mode, foreign keys on, FTS5 for search. Plain SQL keeps the schema and the code in one language |
+| Migrations | Numbered SQL files + `PRAGMA user_version` | Every schema change is versioned, runs in one transaction, and a backup is taken before migrating |
+| PDFs | Printable pages + the browser's "Save as PDF" | Receipts and statements print cleanly with any characters in names. fpdf2 is planned for one-click batch letters |
+| Excel/CSV | `csv` module | Import and export CSV, which Excel opens directly. `.xlsx` export (openpyxl) is planned |
 | Bank import | `ofxparse` + CSV | Most banks let you download OFX/QFX or CSV files |
 | Passwords | argon2-cffi | Only if the password lock or multi-user mode is turned on |
 | Desktop window | pywebview | Uses the operating system's built-in web view (Edge WebView2 on Windows, WebKit on macOS) |
@@ -141,7 +144,7 @@ RentalTracker/
 
 ## 6. Data model
 
-The full DDL, with every column, constraint and index, is in [`schema.sql`](schema.sql). This section explains the structure.
+The full DDL, with every column, constraint and index, is in [`0001_initial.sql`](../src/rental_tracker/db/migrations/0001_initial.sql). This section explains the structure.
 
 ### 6.1 Core relationships
 
@@ -467,7 +470,7 @@ Every report can be filtered by date range, property, tag or owner, and exported
 ```
 1. Find the data folder and take app.lock (if another copy is already running, focus it instead)
 2. Open SQLite: foreign_keys=ON, journal_mode=WAL, busy_timeout=5000
-3. If migrations are pending → back up first → run Alembic migrations
+3. If migrations are pending → back up first → run the migrations
 4. PRAGMA quick_check (full integrity_check weekly)
 5. Catch-up jobs (all idempotent):
       a. Activate future leases whose start date has arrived; end the lease they replace
@@ -513,7 +516,7 @@ Every report can be filtered by date range, property, tag or owner, and exported
 
 Example: 500 properties × 2 units × 12 months × 10 years ≈ 120k rent charges, plus a similar number of payments and 50k+ expenses. SQLite handles this with no strain, provided:
 
-- Foreign-key and date columns are indexed (already in `schema.sql`)
+- Foreign-key and date columns are indexed (already in the schema)
 - Lists are paginated (50–100 rows per page)
 - Reports aggregate in SQL, not in Python loops
 - A test (`tests/fixtures/seed_portfolio.py`) builds a portfolio this size, and every page must load in under 300 ms
@@ -527,11 +530,11 @@ Nobody wants to type in 50+ properties by hand. The app ships **CSV and Excel te
 | File | Columns (★ = required) | Matched by |
 |---|---|---|
 | `owners.csv` | name★, entity_type, email, phone, mailing_address | name |
-| `properties.csv` | code★, owner_name★, name★, property_type★, address_line1★, city★, state★, postal_code★, year_built, purchase_date, purchase_price, tags (`;`-separated) | code |
+| `properties.csv` | code★, owner_name★, name★, property_type★, address_line1★, address_line2, city★, state★, postal_code★, year_built, purchase_date, purchase_price, estimated_value, tags (`;`-separated) | code |
 | `units.csv` | property_code★, unit_label★, bedrooms, bathrooms, square_feet, market_rent | property_code + unit_label |
 | `tenants.csv` | tenant_key★, first_name★, last_name★, email, phone | tenant_key (your own ID) |
-| `leases.csv` | property_code★, unit_label★, tenant_keys★ (`;`-separated, first = primary), start_date★, end_date, rent★, due_day, deposit, late_fee_type, late_fee_amount, grace_days | property_code + unit_label + start_date |
-| `opening_balances.csv` | property_code★, unit_label★, balance★, deposit_held★, as_of_date★ | current lease |
+| `leases.csv` | property_code★, unit_label (blank for single-unit properties), tenant_keys★ (`;`-separated, first = primary), start_date★, end_date, rent★, due_day, deposit, late_fee_type, late_fee_amount, grace_days, billing_start | property_code + unit_label + start_date |
+| `opening_balances.csv` | property_code★, unit_label, balance★, deposit_held★, as_of_date★ | current lease |
 | `vendors.csv` | name★, trade, phone, email, needs_1099 | name |
 
 **Import flow:**
@@ -551,56 +554,56 @@ Nobody wants to type in 50+ properties by hand. The app ships **CSV and Excel te
 
 ## 13. Code structure
 
+This is the layout as built. Items marked *(planned)* belong to later phases.
+
 ```
-rental-tracker/
-├── pyproject.toml
+testtt/
+├── pyproject.toml               # Flask is the only required dependency
 ├── src/rental_tracker/
-│   ├── __main__.py              # entry point: startup sequence, then server + window
-│   ├── config.py                # data folder, settings, paths
+│   ├── __main__.py              # entry point: lock, migrate, integrity check, catch-up, server + window
+│   ├── config.py                # data folder paths
+│   ├── demo.py                  # sample 60-property portfolio for trying the app
 │   ├── db/
-│   │   ├── engine.py            # connection + PRAGMAs
-│   │   ├── models.py            # SQLAlchemy models matching schema.sql
-│   │   └── migrations/          # Alembic
+│   │   ├── __init__.py          # connect (PRAGMAs), transaction(), migrate()
+│   │   └── migrations/          # 0001_initial.sql, 0002_… (applied in order)
 │   ├── domain/                  # PURE logic: no DB, no files, no clock (today is passed in)
-│   │   ├── money.py             # cents, rounding, formatting
+│   │   ├── money.py             # cents, parsing, rounding, formatting
 │   │   ├── periods.py           # month math, due dates
 │   │   ├── proration.py
+│   │   ├── rent.py              # which monthly charges a lease should have
 │   │   ├── late_fees.py
-│   │   ├── allocation.py        # payment application + aging buckets
-│   │   └── amortization.py
+│   │   └── allocation.py        # payment application + aging buckets
 │   ├── services/                # transactions: domain + DB + files
 │   │   ├── startup.py           # catch-up jobs (§11.1)
 │   │   ├── rent_posting.py
-│   │   ├── payments.py          # record, void, NSF, receipts
-│   │   ├── deposits.py
-│   │   ├── leases.py            # renew, notice, move-out
-│   │   ├── expenses.py
+│   │   ├── late_fees.py         # review queue, approve, waive, auto mode
+│   │   ├── ledger.py            # charges, credits, payments, voids, NSF, receipts, deposits
+│   │   ├── leases.py            # create, activate, notice, move-out, renew, rent changes, add-ons
+│   │   ├── portfolio.py         # owners, properties, units, tags
+│   │   ├── tenants.py
+│   │   ├── expenses.py          # vendors, categories, expenses
+│   │   ├── rentday.py           # the Rent Day grid
+│   │   ├── dashboard.py
+│   │   ├── reports.py           # the 12 reports in §10
+│   │   ├── importer.py          # CSV onboarding (§12)
 │   │   ├── documents.py         # content-addressed storage
-│   │   ├── letters.py           # template rendering + batch PDFs
-│   │   ├── importer.py          # CSV/Excel onboarding (§12)
-│   │   ├── bank_import.py       # OFX/CSV + matching
-│   │   ├── backup.py            # backup, rotation, restore
-│   │   ├── search.py            # FTS5 index maintenance
-│   │   ├── audit.py
-│   │   └── reports/             # one module per report (§10)
-│   ├── pdf/                     # fpdf2 layouts: receipt, statement, letter
+│   │   ├── backup.py            # backup, rotation, external copy, restore
+│   │   ├── search.py            # FTS5 index
+│   │   ├── instance_lock.py     # one running copy per data folder
+│   │   └── common.py            # settings, audit log, books lock, errors
 │   └── web/
-│       ├── app.py               # Flask factory, security middleware (host check, token, CSRF)
-│       ├── routes/              # one blueprint per screen (§9)
+│       ├── __init__.py          # Flask factory, security guard (host check, launch token, CSRF)
+│       ├── forms.py, filters.py
+│       ├── routes/              # one blueprint per area (§9)
 │       ├── templates/
-│       └── static/
-│           ├── vendor/          # htmx, chart.js, css — NO CDNs
-│           └── app.css
-├── tests/
-│   ├── domain/                  # unit + property-based tests
-│   ├── services/                # against a temp SQLite file
-│   ├── web/                     # route tests with Flask test client
-│   ├── e2e/                     # optional Playwright smoke tests
-│   └── fixtures/seed_portfolio.py
-└── packaging/
-    ├── rental_tracker.spec      # PyInstaller
-    └── installer.iss            # Inno Setup (Windows)
+│       └── static/              # app.css, app.js, vendor/htmx.min.js — NO CDNs
+└── tests/
+    ├── domain/                  # unit + property-based (Hypothesis) tests
+    ├── services/                # against a temp SQLite file
+    └── web/                     # every page renders, security checks, full workflows
 ```
+
+Planned: `services/bank_import.py`, `services/letters.py`, loans and amortization, and `packaging/` (PyInstaller spec, Inno Setup script).
 
 **Rule:** `domain/` never imports from `services/` or `web/`, and never reads the clock or the database. This keeps the money logic easy to test.
 
@@ -613,7 +616,7 @@ rental-tracker/
 | Domain | Proration (leap years, 28/30/31-day months, first-day and last-day moves), late fees (flat, percent, cap, grace boundary), allocation order, aging buckets, amortization | pytest with table-driven cases |
 | Domain invariants | Allocated amount = min(payments, charges) · balance = charges − payments · posting rent twice changes nothing · rounding never gains or loses a cent across a year | **Hypothesis** property-based tests |
 | Services | Rent posting catch-up over missed months, renewals, NSF flow, deposit disposition, import dry-run vs commit, backup → restore round-trip | pytest with a temp data folder |
-| Schema | Constraints block bad data (second active lease, negative rent, deleting a payment, voiding without a reason) | pytest against `schema.sql` |
+| Schema | Constraints block bad data (second active lease, negative rent, deleting a payment, voiding without a reason) | pytest against the migrated schema |
 | Web | Every route renders; CSRF is enforced; foreign `Host` headers are rejected; no template references `http(s)://` | Flask test client |
 | Scale | Seed 500 properties / 10 years; key pages load in under 300 ms; reports finish in under 2 s | pytest benchmark |
 | End-to-end | Import sample CSVs → Rent Day → pay → late-fee review → P&L | Playwright (optional) |
@@ -628,7 +631,7 @@ Each phase ends with something usable, and the phases are built in order.
 
 | Phase | Scope | Done when… |
 |---|---|---|
-| **0. Foundation** | Project skeleton, data folder, DB + Alembic, settings, backup/restore, app shell and navigation, desktop window, offline asset check | The app opens with no network, creates its database, and a backup → restore round-trip works |
+| **0. Foundation** | Project skeleton, data folder, DB + migrations, settings, backup/restore, app shell and navigation, desktop window, offline asset check | The app opens with no network, creates its database, and a backup → restore round-trip works |
 | **1. Records** | Owners, properties, units, tags, tenants, leases (lifecycle, renewals, rent changes, add-ons), documents, search, **CSV import** | All your properties and current leases are imported in one sitting |
 | **2. Money** | Rent posting + proration, payments, **Rent Day grid**, late-fee review, NSF, credits, deposits held, tenant ledger, receipts and statements (PDF), dashboard v1 | A full month of rent is recorded and every balance matches your spreadsheet |
 | **3. Expenses and reports** | Expenses, categories, vendors, recurring expenses, rent roll, aging, collections, P&L, Schedule E, expense detail, exports | Last year's numbers are reproduced from the app |
@@ -660,3 +663,28 @@ Each phase ends with something usable, and the phases are built in order.
 6. **Current data:** where does it live now (Excel, QuickBooks, another app)? That decides which import templates to build first.
 7. **Accountant handoff:** what format does your accountant want (Excel, QuickBooks, PDF)?
 8. **Housing assistance:** do any tenants use voucher programs? If so, the split tenant/agency payment tracking moves into the MVP.
+
+---
+
+## 18. Build status
+
+The app in this repository implements phases 0–3 of the roadmap, plus parts of phase 4. Run it with the demo data to try everything (see the README).
+
+**Built and tested**
+
+- **Foundation:** data folder, SQLite with versioned migrations, automatic backup before upgrades, integrity check on start, one copy per data folder, a desktop window (pywebview) or browser, and a local-only web server with a launch token, host check and CSRF protection.
+- **Backups:** daily, weekly and monthly rotation, a backup on exit, before imports and before restores, a copy to an external drive with an incremental documents copy, and one-click restore with a safety copy.
+- **Records:** owners, properties, units, tags, tenants and leases. Lease lifecycle covers draft, future, active, month-to-month, notice, move-out with prorated credit, and renewal with the deposit carried over. Also rent changes, recurring add-ons, co-tenants, documents on any record, global search and the audit log.
+- **Money:** automatic rent and add-on billing (idempotent, prorated, lookahead, billing start for imports), charges, credits, payments and receipts, voids with required reasons, bounced checks with an NSF fee, the security deposit ledger (received, deductions, refunds, applied to balance), and the books lock.
+- **Rent Day:** a keyboard-driven grid (Enter saves the row and moves to the next), filters, a typo guard, and "Bill rent now".
+- **Late fees:** a review queue with bulk approve or waive, or automatic mode, using flat or percent fees with caps and grace days.
+- **Expenses:** quick entry that remembers your last choices, receipt upload, vendors created on the fly, and capital vs repair categories mapped to tax lines.
+- **Reports:** rent roll, aging, monthly collections, P&L (cash or accrual), Schedule E, expense detail, vacancy, lease expirations, deposit register, rent vs market, property performance and 1099. All can be filtered by property, tag or owner, printed, and exported to CSV.
+- **Dashboard:** collection, past-due, occupancy, expiring leases and deposits held, plus a "needs attention" list covering late fees, deposit deadlines, overdue move-outs, new leases starting, expiring documents and vendor insurance, and backup health.
+- **Bulk import:** 7 CSV templates, a dry run that saves nothing, per-row errors with spreadsheet row numbers, and an all-or-nothing commit taken after a backup.
+
+**Not built yet**
+
+- **Phase 4:** work orders, inspections, letter templates and batch letters, the communication log, and recurring expenses.
+- **Phase 5:** bank import and reconciliation, loans and amortization UI (the P&L already reads `loan_payments`), insurance policies UI, depreciation, owner statements and mileage log UI.
+- **Phase 6:** installer packaging, password lock, SQLCipher, multi-user office mode, and an encrypted off-site backup archive.

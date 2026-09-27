@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Statement{% endblock %}
+{% block content %}
+<div class="actions no-print" style="margin:0 0 14px">
+  <a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">← Back to lease</a>
+  <form method="get" style="display:inline-flex;gap:6px;align-items:center"><label class="small">From <input type="date" name="start" value="{{ start }}"></label><button class="btn small">Apply</button></form>
+  <button class="btn primary" data-print>Print / Save as PDF</button>
+</div>
+<article class="doc">
+  <div class="doc-head">
+    <div><h1>Tenant statement</h1><p class="muted">{{ today|fdate }}</p></div>
+    <div style="text-align:right"><strong>{{ owner.name }}</strong><br>{{ owner.mailing_address or '' }}<br>{{ owner.phone or '' }} {{ owner.email or '' }}</div>
+  </div>
+  <p><strong>{{ names }}</strong><br>{{ lease.address_line1 }}{% if lease.unit_label != 'Main' %}, unit {{ lease.unit_label }}{% endif %}<br>{{ lease.city }}, {{ lease.state }} {{ lease.postal_code }}</p>
+  <table>
+    <thead><tr><th>Date</th><th>Description</th><th class="num">Charges</th><th class="num">Payments / credits</th><th class="num">Balance</th></tr></thead>
+    <tbody>
+      {% if start %}<tr><td>{{ start|fdate }}</td><td>Balance forward</td><td></td><td></td><td class="num">{{ opening|money }}</td></tr>{% endif %}
+      {% for e in entries %}<tr><td class="nowrap">{{ e.date|fdate }}</td><td>{{ e.description }}</td><td class="num">{{ e.charge|money(true) }}</td><td class="num">{{ e.credit|money(true) }}</td><td class="num">{{ e.balance|money }}</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr class="total"><td colspan="4">{{ 'Amount due' if summary.balance > 0 else ('Credit on account' if summary.balance < 0 else 'Balance') }}</td><td class="num">{{ summary.balance|money }}</td></tr></tfoot>
+  </table>
+  {% if summary.deposit_held %}<p class="small muted" style="margin-top:14px">Security deposit held: {{ summary.deposit_held|money }}</p>{% endif %}
+</article>
+{% endblock %}

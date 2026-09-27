@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Search{% endblock %}
+{% block content %}
+{{ m.page_head("Search", (results|length ~ " results for “" ~ q ~ "”") if q else "Type in the search box") }}
+{% if results %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Type</th><th>Name</th><th>Matched</th></tr></thead>
+  <tbody>
+  {% for r, link in results %}
+    <tr><td><span class="badge">{{ r.entity_type|label }}</span></td><td><a href="{{ link }}">{{ r.title }}</a></td><td class="muted small">{{ r.snippet }}</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+{% elif q %}<div class="card empty">Nothing matched. Try fewer words, a street name, or part of a tenant's name.</div>{% endif %}
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ rep.title }}{% endblock %}
+{% block content %}
+{% call m.page_head(rep.title, rep.subtitle, crumbs='<a href="' ~ url_for('reports.index') ~ '">Reports</a>') %}
+  <button class="btn" data-print>Print</button>
+  <a class="btn" href="{{ url_with(format='csv') }}">Export CSV</a>
+{% endcall %}
+<form class="filters" method="get">
+  {% if 'scope' in filters %}
+  <label class="field"><span>Property</span><select name="property"><option value="">All</option>{% for v, t in props %}<option value="{{ v }}" {{ 'selected' if request.args.get('property') == v|string }}>{{ t }}</option>{% endfor %}</select></label>
+  <label class="field"><span>Tag</span><select name="tag"><option value="">All</option>{% for t in tags %}<option value="{{ t.id }}" {{ 'selected' if request.args.get('tag') == t.id|string }}>{{ t.name }}</option>{% endfor %}</select></label>
+  <label class="field"><span>Owner</span><select name="owner"><option value="">All</option>{% for o in owners %}<option value="{{ o.id }}" {{ 'selected' if request.args.get('owner') == o.id|string }}>{{ o.name }}</option>{% endfor %}</select></label>
+  {% endif %}
+  {% if 'range' in filters %}
+  <label class="field"><span>From</span><input type="date" name="start" value="{{ start }}"></label>
+  <label class="field"><span>To</span><input type="date" name="end" value="{{ end }}"></label>
+  {% endif %}
+  {% if 'period' in filters %}<label class="field"><span>Month</span><input type="month" name="period" value="{{ period }}"></label>{% endif %}
+  {% if 'year' in filters %}<label class="field"><span>Year</span><input type="number" name="year" value="{{ year }}" min="2000" max="2100" style="width:90px"></label>{% endif %}
+  {% if 'months' in filters %}<label class="field"><span>Months ahead</span><input type="number" name="months" value="{{ request.args.get('months', 12) }}" min="1" max="36" style="width:80px"></label>{% endif %}
+  {% if 'basis' in filters %}<label class="field"><span>Basis</span><select name="basis">{% for b in ['cash', 'accrual'] %}<option value="{{ b }}" {{ 'selected' if request.args.get('basis', 'cash') == b }}>{{ b|label }}</option>{% endfor %}</select></label>{% endif %}
+  {% if 'category' in filters %}<label class="field"><span>Category</span><select name="category"><option value="">All</option>{% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if request.args.get('category') == c.id|string }}>{{ c.name }}</option>{% endfor %}</select></label>{% endif %}
+  <button class="btn">Run</button>
+</form>
+<p class="print-only"><strong>{{ rep.title }}</strong> — {{ rep.subtitle }} · printed {{ today|fdate }}</p>
+{% if rep.rows %}
+<div class="table-wrap" {% if key == 'income-statement' %}style="max-width:640px"{% endif %}><table>
+  <thead><tr>{% for c in rep.columns %}<th class="{{ 'num' if c.kind in ['money', 'pct', 'int'] }}">{{ c.label }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for row in rep.rows %}<tr class="{{ row.get('_class', '') }}">{% for c in rep.columns %}{{ cell(row, c) }}{% endfor %}</tr>{% endfor %}</tbody>
+  {% if rep.totals %}<tfoot><tr class="total">{% for c in rep.columns %}{{ cell(rep.totals, c) }}{% endfor %}</tr></tfoot>{% endif %}
+</table></div>
+{% else %}<div class="card empty">Nothing to show for these filters.</div>{% endif %}
+{% for n in rep.notes %}<p class="small muted">{{ n }}</p>{% endfor %}
+{% endblock %}
