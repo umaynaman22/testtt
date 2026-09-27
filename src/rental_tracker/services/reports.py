@@ -5,13 +5,13 @@ import csv
 import io
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 from ..domain.allocation import BUCKETS, aging
 from ..domain.periods import parse_date, period_end, period_start
 from . import ledger
-from .common import csv_row, get_int_setting
+from .common import csv_row
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,6 @@ def rent_roll(conn: sqlite3.Connection, property_ids: list[int] | None = None) -
             Column("tenants", "Tenants", link=("lease", "lease_id")),
             Column("lease_status", "Status"), Column("start_date", "Moved in", "date"),
             Column("current_rent_cents", "Rent", "money"),
-            Column("deposit_held_cents", "Deposit held", "money"),
             Column("balance_cents", "Balance", "money")]
     for r in rows:
         if r["occupancy"] == "vacant":
@@ -196,37 +195,9 @@ def vacancy(conn: sqlite3.Connection, today: date, property_ids: list[int] | Non
                   None, ["Units that have never had a tenant in the app show no 'vacant since' date."])
 
 
-# ---- 5. Security deposit register ---------------------------------------------------------
-
-def deposit_register(conn: sqlite3.Connection, today: date, property_ids: list[int] | None = None) -> Report:
-    flt, params = _in("p.id", property_ids)
-    days = get_int_setting(conn, "deposit_return_days", 30)
-    rows = [dict(r) for r in conn.execute(f"""
-        SELECT l.id AS lease_id, l.status, l.move_out_date, l.deposit_cents, p.id AS property_id,
-               p.code AS property_code, u.unit_label, {TENANTS_SQL} AS tenants, d.held_cents
-          FROM v_deposit_held d JOIN leases l ON l.id = d.lease_id
-          JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id
-         WHERE d.held_cents <> 0 AND {flt} ORDER BY p.code, u.unit_label""", params)]
-    for r in rows:
-        if r["move_out_date"] and r["status"] in ("ended", "terminated"):
-            due = parse_date(r["move_out_date"]) + timedelta(days=days)
-            r["return_due"] = due.isoformat()
-            r["note"] = "OVERDUE" if due < today else "Return due"
-        else:
-            r["return_due"], r["note"] = None, ""
-    cols = [Column("property_code", "Property", link=("property", "property_id")), Column("unit_label", "Unit"),
-            Column("tenants", "Tenants", link=("lease", "lease_id")), Column("status", "Lease"),
-            Column("deposit_cents", "Agreed", "money"), Column("held_cents", "Held", "money"),
-            Column("return_due", "Return by", "date"), Column("note", "")]
-    return Report("deposits", "Security deposits", "Money you are holding for tenants",
-                  cols, rows, _sum_totals(rows, cols, "property_code"),
-                  [f"Return deadline uses {days} days after move-out (Settings). Check your local law."])
-
-
 REPORTS = {
     "rent-roll": ("Rent roll", "Every unit: who lives there, rent, balance"),
     "aging": ("Who owes money", "Unpaid amounts by how many days late"),
     "collections": ("Monthly collections", "Rent billed vs paid, per property"),
     "vacancy": ("Vacant units", "Empty units and how long they've been empty"),
-    "deposits": ("Security deposits", "Deposits you are holding"),
 }

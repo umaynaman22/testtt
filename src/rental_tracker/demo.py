@@ -60,21 +60,16 @@ def build_demo(data: DataDir, today: date | None = None, properties: int = 60, s
             people = []
             for k in range(rnd.choice([1, 1, 2, 2, 3])):
                 tid = tenants.save_tenant(conn, None, {"first_name": rnd.choice(FIRST), "last_name": rnd.choice(LAST),
-                                                       "phone": f"555-{rnd.randint(1000, 9999)}",
-                                                       "email": None if k else f"tenant{n}@example.com"}, reindex=False)
+                                                       "phone": f"555-{rnd.randint(1000, 9999)}"}, reindex=False)
                 people.append((tid, "primary" if k == 0 else "co_tenant"))
             start = today - timedelta(days=rnd.randint(40, 1100))
             start = start.replace(day=1) if rnd.random() < .8 else start
-            end = date(start.year + 1, start.month, 1) - timedelta(days=1) if start.day == 1 else start + timedelta(days=364)
             rent = market - rnd.choice([0, 0, 2500, 5000, 10000, 15000])
             lid = leases.create_lease(
-                conn, unit_id=unit_id, tenants=people, start=start.isoformat(), end=end.isoformat(), rent_cents=rent,
-                today=today, billing_start=max(start, billing_start).isoformat(), deposit_cents=rent,
+                conn, unit_id=unit_id, tenants=people, start=start.isoformat(), end=None, rent_cents=rent,
+                today=today, billing_start=max(start, billing_start).isoformat(),
                 late_fee_type="flat", late_fee_flat_cents=5000,
                 late_fee_percent_bp=500, late_fee_grace_days=5, move_in_date=start.isoformat())
-            if end < today:
-                conn.execute("UPDATE leases SET status = 'month_to_month' WHERE id = ?", (lid,))
-            ledger.record_deposit(conn, lid, "received", rent, start.isoformat(), "Security deposit")
             lease_ids.append((lid, rent))
 
         rent_posting.post_rent(conn, today)
@@ -107,25 +102,19 @@ def build_demo(data: DataDir, today: date | None = None, properties: int = 60, s
         keys = [c.key for c in late_fees.find_candidates(conn, today) if c.period < this_period]
         late_fees.apply(conn, keys, "approve", today)
 
-        # one tenant who moved out recently, with the deposit still held
-        if len(lease_ids) > 10:
-            ended = lease_ids[5][0]
-            charges = conn.execute("SELECT COALESCE(SUM(amount_cents), 0) FROM charges WHERE lease_id = ? AND voided_at IS NULL",
-                                   (ended,)).fetchone()[0]
-            paid = conn.execute("SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE lease_id = ? AND voided_at IS NULL",
-                                (ended,)).fetchone()[0]
-            if charges > paid:
-                ledger.record_payment(conn, ended, charges - paid, today.isoformat(), "check", "4410")
-            leases.end_lease(conn, ended, (today - timedelta(days=12)).isoformat())
+        # a few tenants with a debt besides rent
+        for lid, _ in lease_ids[3:30:9]:
+            ledger.add_charge(conn, lid, "other", rnd.choice([7500, 15000, 32000]),
+                              (today - timedelta(days=rnd.randint(3, 20))).isoformat(),
+                              "Debt — " + rnd.choice(["broken window", "water bill", "lock change"]))
 
         # a vacant-ready unit gets an upcoming lease
         vacant_unit = units[sorted(vacant)[0]][1]
         tid = tenants.save_tenant(conn, None, {"first_name": "Priya", "last_name": "Raman", "phone": "555-7777"},
                                   reindex=False)
         leases.create_lease(conn, unit_id=vacant_unit, tenants=[(tid, "primary")],
-                            start=(today + timedelta(days=9)).isoformat(),
-                            end=(today + timedelta(days=9 + 364)).isoformat(), rent_cents=units[sorted(vacant)[0]][2],
-                            today=today, deposit_cents=units[sorted(vacant)[0]][2], late_fee_type="flat",
+                            start=(today + timedelta(days=9)).isoformat(), end=None,
+                            rent_cents=units[sorted(vacant)[0]][2], today=today, late_fee_type="flat",
                             late_fee_flat_cents=5000)
         search.rebuild(conn)
     conn.close()

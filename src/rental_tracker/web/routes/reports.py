@@ -33,7 +33,6 @@ def view(key: str):
         "aging": lambda: reports.aging_report(conn, t, pids),
         "collections": lambda: reports.collections(conn, period, pids),
         "vacancy": lambda: reports.vacancy(conn, t, pids),
-        "deposits": lambda: reports.deposit_register(conn, t, pids),
     }[key]()
     if request.args.get("format") == "csv":
         return Response(rep.to_csv(), mimetype="text/csv",

@@ -3,7 +3,6 @@
 {% block title %}{{ names }}{% endblock %}
 {% block content %}
 {% set s = summary %}
-{% set current = lease.status in ['active', 'month_to_month', 'future', 'draft'] %}
 {% call m.page_head(names, place(lease.property_code, lease.unit_label),
       crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a> / <a href="' ~ url_for('properties.detail', pid=lease.property_id) ~ '">' ~ lease.property_code ~ '</a>') %}
   <a class="btn" href="{{ url_for('leases.edit', lease_id=lease.id) }}">Edit</a>
@@ -22,7 +21,6 @@
   <div class="kpi"><div class="label">Last payment</div>
     {% if last_payment %}<div class="value">{{ last_payment.credit|money }}</div><div class="sub">{{ last_payment.date|fdate }}</div>
     {% else %}<div class="value muted">—</div><div class="sub">none yet</div>{% endif %}</div>
-  {% if s.deposit_held %}<div class="kpi"><div class="label">Deposit held</div><div class="value">{{ s.deposit_held|money }}</div></div>{% endif %}
 </section>
 
 <div class="split">
@@ -60,7 +58,7 @@
                 <a class="btn small" href="{{ url_for('rentday.receipt', payment_id=e.id) }}">Receipt</a>
                 {{ m.delete_button(url_for('leases.delete_payment', lease_id=lease.id, payment_id=e.id), "Delete this payment?") }}
               {% elif e.source == 'auto' and e.type == 'rent' %}
-                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id), "Delete this rent charge? It will be billed again with the current rent. To skip this month's rent, add a credit instead.") }}
+                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id), "Delete this rent charge? It will be billed again with the current rent.") }}
               {% else %}
                 {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id), "Delete this line?") }}
               {% endif %}
@@ -78,7 +76,6 @@
       {% for t in people %}
         <p style="margin:0 0 8px"><strong>{{ t.first_name }} {{ t.last_name }}</strong>
           {% if t.phone %}<br><span class="small">{{ t.phone }}</span>{% endif %}
-          {% if t.email %}<br><a class="small" href="mailto:{{ t.email }}">{{ t.email }}</a>{% endif %}
           {% if people|length > 1 %}<br>{{ m.delete_button(url_for('leases.remove_person', lease_id=lease.id, tid=t.id), "Remove " ~ t.first_name ~ " from here?", label="remove", cls="btn link small") }}{% endif %}</p>
       {% endfor %}
       <details class="section"><summary>Add another person</summary>
@@ -91,67 +88,18 @@
       {% if lease.notes %}<p class="small muted" style="white-space:pre-wrap">{{ lease.notes }}</p>{% endif %}
     </div>
 
-    <div class="card" id="more">
-      <h2>More</h2>
-      <details class="section"><summary>Add a charge (repair, utility bill…)</summary>
-        <form method="post" action="{{ url_for('leases.charge', lease_id=lease.id) }}">
-          {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.money("amount", "Amount", value="") }}
-            {{ m.date("due_date", "Date", value=today.isoformat()) }}
-            {{ m.input("description", "What for", wide=True, value="") }}
-          </div>
-          <div class="actions"><button class="btn small">Add charge</button></div>
-        </form>
-      </details>
-      <details class="section"><summary>Give a credit or discount</summary>
-        <form method="post" action="{{ url_for('leases.credit', lease_id=lease.id) }}">
-          {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.money("amount", "Amount", value="") }}
-            {{ m.date("date", "Date", value=today.isoformat()) }}
-            {{ m.input("description", "Reason", wide=True, value="") }}
-          </div>
-          <div class="actions"><button class="btn small">Add credit</button></div>
-        </form>
-      </details>
-      <details class="section"><summary>Change the rent</summary>
-        <form method="post" action="{{ url_for('leases.rent_change', lease_id=lease.id) }}">
-          {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.money("rent", "New rent", value="") }}
-            {{ m.date("effective_date", "Starting", value="", help="Blank = next rent bill") }}
-          </div>
-          <div class="actions"><button class="btn small">Change rent</button></div>
-        </form>
-        {% if changes %}<ul class="small" style="padding-left:18px">{% for c in changes %}<li>{{ c.rent_cents|money }} from {{ c.effective_date|fdate }}
-          {{ m.delete_button(url_for('leases.delete_rent_change', lease_id=lease.id, change_id=c.id), "Delete this rent change? Rent already billed stays the same.", label="delete", cls="btn link small") }}</li>{% endfor %}</ul>{% endif %}
-      </details>
-      <details class="section" id="deposit" {{ 'open' if deposits }}><summary>Security deposit{% if s.deposit_held %}: {{ s.deposit_held|money }} held{% endif %}</summary>
-        {% if deposits %}<table class="compact"><tbody>{% for d in deposits %}<tr class="{{ 'voided' if d.voided_at }}">
-          <td class="nowrap small">{{ d.txn_date|fdate }}</td><td class="small">{{ {'received': 'Received', 'interest': 'Interest', 'deduction': 'Kept', 'refund': 'Returned', 'applied_to_balance': 'Used for rent owed'}[d.txn_type] }}{% if d.description and d.description != 'Security deposit' %} — {{ d.description }}{% endif %}</td>
-          <td class="num small">{{ ('' if d.txn_type in ['received', 'interest'] else '−') ~ (d.amount_cents|money) }}</td>
-          <td class="actions keep">{{ m.delete_button(url_for('leases.delete_deposit', lease_id=lease.id, txn_id=d.id), "Delete this deposit entry?", label="delete", cls="btn link small") }}</td></tr>{% endfor %}</tbody></table>{% endif %}
-        <form method="post" action="{{ url_for('leases.deposit', lease_id=lease.id) }}">
-          {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.select("txn_type", "What happened", deposit_types, value=('received' if not s.deposit_held else 'refund')) }}
-            {{ m.money("amount", "Amount", value="") }}
-            {{ m.date("date", "Date", value=today.isoformat()) }}
-            {{ m.input("description", "Note", value="") }}
-          </div>
-          <div class="actions"><button class="btn small">Save</button></div>
-        </form>
-      </details>
-      {% if current %}
-      <details class="section"><summary>Moved out</summary>
-        <form method="post" action="{{ url_for('leases.move_out', lease_id=lease.id) }}" data-confirm="Mark as moved out? Rent billed after that day is taken off; their history is kept.">
-          {{ m.csrf() }}
-          <div class="form-grid">{{ m.date("move_out_date", "Moved out on", value=today.isoformat()) }}</div>
-          <div class="actions"><button class="btn small">Mark moved out</button></div>
-        </form>
-      </details>
-      {% endif %}
+    <div class="card" id="debt">
+      <h2>Add debt</h2>
+      <p class="small muted" style="margin-top:0">Money they owe you besides rent, like an old balance or a repair. It adds to their balance.</p>
+      <form method="post" action="{{ url_for('leases.debt', lease_id=lease.id) }}">
+        {{ m.csrf() }}
+        <div class="form-grid">
+          {{ m.money("amount", "Amount", value="") }}
+          {{ m.date("date", "Date", value=today.isoformat()) }}
+          {{ m.input("note", "Note", wide=True, value="", placeholder="e.g. broken window") }}
+        </div>
+        <div class="actions"><button class="btn">Add debt</button></div>
+      </form>
     </div>
   </div>
 </div>

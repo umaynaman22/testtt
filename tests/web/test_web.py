@@ -61,13 +61,13 @@ def test_every_page_renders(app, client):
     pid, unit, lease, tid, pay = (q(app, f"SELECT id FROM {t} LIMIT 1")[0]
                                   for t in ("properties", "units", "leases", "tenants", "payments"))
     pages = ["/", "/properties", "/properties?vacant=1&sort=balance", "/properties/new", f"/properties/{pid}",
-             f"/properties/{pid}/edit", f"/units/{unit}", "/tenants", "/tenants?status=past", "/tenants?status=all",
+             f"/properties/{pid}/edit", f"/units/{unit}", "/tenants", "/tenants?q=lee",
              "/tenants?format=csv", "/tenants/new", f"/tenants/new?unit_id={unit}", f"/tenants/{tid}",
              f"/tenants/{tid}/edit", "/rent-day", "/rent-day?period=2026-08&show=unpaid", "/late", "/payments",
              "/payments?format=csv", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=maple",
              "/search?q=zzzz", f"/delete/property/{pid}", f"/delete/unit/{unit}", f"/delete/lease/{lease}",
              f"/delete/tenant/{tid}"]
-    for key in ("rent-roll", "aging", "collections", "vacancy", "deposits"):
+    for key in ("rent-roll", "aging", "collections", "vacancy"):
         pages += [f"/reports/{key}", f"/reports/{key}?format=csv", f"/reports/{key}?property={pid}"]
     for lid in q(app, "SELECT id FROM leases"):
         pages += [f"/leases/{lid}", f"/leases/{lid}/edit", f"/leases/{lid}/statement"]
@@ -76,6 +76,7 @@ def test_every_page_renders(app, client):
         assert resp.status_code in (200, 302), f"{page} -> {resp.status_code}"
     assert client.get("/properties/999999").status_code == 404
     assert client.get("/leases/999999").status_code == 404
+    assert client.get("/reports/deposits").status_code == 404
     for gone in ("/expenses", "/vendors", "/owners", "/import", "/backups", "/audit", "/leases"):
         assert client.get(gone).status_code == 404, gone
 
@@ -105,11 +106,11 @@ def test_simple_workflow(app, client):
     assert "Add tenant" in client.get(f"/properties/{pid}").get_data(as_text=True)
     # a tenant who has lived there since last year and already owes money
     r = client.post("/tenants/new", data={"csrf_token": token, "unit_id": unit, "name": "Rita Moreno",
-                                          "rent": "1,200", "moved_in": "2025-05-01", "owes_now": "300"})
+                                          "rent": "1,200", "moved_in": "2025-05-01", "debt": "300"})
     assert r.status_code == 302, r.get_data(as_text=True)[:2000]
     lid = int(r.headers["Location"].rstrip("/").split("/")[-1])
     page = client.get(f"/leases/{lid}").get_data(as_text=True)
-    assert "Rita Moreno" in page and "Balance owed when added" in page
+    assert "Rita Moreno" in page and ">Debt<" in page
     assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0] == 1  # only this month
     assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 150000
     # a payment with only an amount
@@ -124,9 +125,34 @@ def test_simple_workflow(app, client):
     client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "name": "Rita M", "rent": "1300"})
     assert q(app, f"SELECT rent_cents FROM lease_rent_changes WHERE lease_id = {lid}") == [130000]
     assert q(app, "SELECT first_name FROM tenants WHERE last_name = 'M'") == ["Rita"]
-    # moved out keeps history
-    client.post(f"/leases/{lid}/move-out", data={"csrf_token": token})
-    assert q(app, f"SELECT status FROM leases WHERE id = {lid}") == ["ended"]
+    # add a debt with a note, then one with only an amount
+    client.post(f"/leases/{lid}/debt", data={"csrf_token": token, "amount": "75", "note": "broken window"})
+    client.post(f"/leases/{lid}/debt", data={"csrf_token": token, "amount": "25"})
+    assert q(app, f"SELECT description FROM charges WHERE lease_id = {lid} AND charge_type = 'other' ORDER BY id") == \
+        ["Debt — broken window", "Debt"]
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 10000
+    assert "Debt — broken window" in client.get(f"/leases/{lid}").get_data(as_text=True)
+    client.post(f"/leases/{lid}/debt", data={"csrf_token": token})  # nothing entered: nothing added
+    assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'other'")[0] == 2
+
+
+def test_removed_fields_and_actions(app, client):
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' LIMIT 1")[0]
+    page = client.get(f"/leases/{lid}").get_data(as_text=True)
+    assert "Add debt" in page
+    for gone in ("Add a charge", "Give a credit", "Change the rent", "Security deposit", "Deposit held",
+                 "Moved out", "mailto:"):
+        assert gone not in page, gone
+    for url in (f"/leases/{lid}/charge", f"/leases/{lid}/credit", f"/leases/{lid}/deposit",
+                f"/leases/{lid}/rent-change", f"/leases/{lid}/move-out"):
+        assert client.post(url, data={"csrf_token": csrf(client)}).status_code == 404, url
+    forms = client.get("/tenants/new").get_data(as_text=True) + client.get(f"/leases/{lid}/edit").get_data(as_text=True)
+    for gone in ('name="email"', 'name="second_name"', 'name="end_date"', 'name="deposit"', "Already owes"):
+        assert gone not in forms, gone
+    assert 'name="debt"' in forms
+    tid = q(app, "SELECT id FROM tenants LIMIT 1")[0]
+    assert 'name="email"' not in client.get(f"/tenants/{tid}/edit").get_data(as_text=True)
+    assert 'class="tabs"' not in client.get("/tenants").get_data(as_text=True)
 
 
 def test_tenant_without_property_can_be_linked_later(app, client):

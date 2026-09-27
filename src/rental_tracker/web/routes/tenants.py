@@ -17,14 +17,12 @@ bp = Blueprint("tenants", __name__)
 
 def person_fields(f: Form) -> dict:
     first, last = tenants.split_name(f.raw("name"))
-    return {"first_name": first, "last_name": last, "phone": f.str("phone"), "email": f.str("email"),
-            "notes": f.str("notes")}
+    return {"first_name": first, "last_name": last, "phone": f.str("phone"), "notes": f.str("notes")}
 
 
 @bp.route("/tenants")
 def index():
-    status = request.args.get("status", "current")
-    rows = tenants.tenancies(db(), today=today(), status=status, q=request.args.get("q", ""))
+    rows = tenants.tenancies(db(), today=today(), status="all", q=request.args.get("q", ""))
     if request.args.get("format") == "csv":
         buf = io.StringIO()
         w = csv.writer(buf)
@@ -36,7 +34,7 @@ def index():
                                 r["days_late"] or "", r["last_paid_on"] or ""]))
         return Response(buf.getvalue(), mimetype="text/csv",
                         headers={"Content-Disposition": "attachment; filename=tenants.csv"})
-    return render_template("tenants/index.html", rows=rows, status=status,
+    return render_template("tenants/index.html", rows=rows,
                            owed=sum(max(r["balance_cents"], 0) for r in rows))
 
 

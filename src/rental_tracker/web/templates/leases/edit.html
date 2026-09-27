@@ -9,14 +9,12 @@
     {% if has_person %}
     {{ m.input("name", "Name") }}
     {{ m.input("phone", "Phone") }}
-    {{ m.input("email", "Email", type="email") }}
     {% endif %}
     {{ m.money("rent", "Monthly rent", help="If rent was already billed, the new amount starts with the next bill") }}
     {{ m.input("rent_due_day", "Rent due on day", type="number", attrs='min="1" max="28"') }}
     {{ m.money("late_fee", "Late fee", help="Blank = no late fee") }}
     {{ m.input("grace_days", "Days before rent counts as late", type="number", attrs='min="0" max="60"') }}
     {{ m.date("moved_in", "Moved in") }}
-    {{ m.date("end_date", "Lease ends") }}
     {{ m.textarea("notes", "Notes") }}
   </div>
   <div class="actions"><button class="btn primary">Save</button><a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">Cancel</a></div>

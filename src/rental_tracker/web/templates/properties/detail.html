@@ -39,21 +39,21 @@
   </details>
 </div>
 
-<div class="grid-2">
+<div class="{{ 'grid-2' if past or prop.notes }}">
   <div class="card">
     <h2>Recent payments <a class="side" href="{{ url_for('rentday.payments', property=prop.id) }}">All →</a></h2>
     {% if payments %}<table class="compact"><tbody>
       {% for p in payments %}<tr><td class="nowrap small">{{ p.received_date|fdate }}</td><td>{{ p.tenants }}</td><td class="num">{{ p.amount_cents|money }}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p class="muted">No payments yet.</p>{% endif %}
   </div>
-  <div class="card">
-    <h2>Past tenants</h2>
-    {% if past %}<table class="compact"><tbody>
+  {% if past or prop.notes %}<div class="card">
+    {% if past %}<h2>Past tenants</h2>
+    <table class="compact"><tbody>
       {% for t in past %}<tr><td><a href="{{ url_for('leases.detail', lease_id=t.lease_id) }}">{{ t.names }}</a></td>
         <td class="small muted">moved out {{ t.move_out_date|fdate }}</td>
         <td class="num {{ 'neg' if t.balance_cents > 0 }}">{{ t.balance_cents|money(true) }}</td></tr>{% endfor %}
-    </tbody></table>{% else %}<p class="muted">None yet.</p>{% endif %}
-    {% if prop.notes %}<h3>Notes</h3><p style="white-space:pre-wrap">{{ prop.notes }}</p>{% endif %}
-  </div>
+    </tbody></table>{% endif %}
+    {% if prop.notes %}<h2>Notes</h2><p style="white-space:pre-wrap">{{ prop.notes }}</p>{% endif %}
+  </div>{% endif %}
 </div>
 {% endblock %}

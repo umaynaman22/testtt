@@ -39,7 +39,6 @@ def test_reports_and_dashboard(conn, owner_id):
     portfolio.save_property(conn, None, {"name": "Empty house"})
     rent_posting.post_rent(conn, TODAY)
     ledger.record_payment(conn, lid, 250000, "2026-03-02", "check")
-    ledger.record_deposit(conn, lid, "received", 100000, "2026-01-01")
     rr = reports.rent_roll(conn)
     assert len(rr.rows) == 3 and rr.totals["balance_cents"] == 50000 + 300000
     assert {r["property_code"] for r in reports.aging_report(conn, TODAY).rows} == {"A", "B"}
@@ -47,6 +46,5 @@ def test_reports_and_dashboard(conn, owner_id):
     assert coll.totals["billed_cents"] == 200000 and coll.totals["paid_cents"] == 50000
     assert "A" in coll.to_csv()
     assert [r["property_code"] for r in reports.vacancy(conn, TODAY).rows] == ["Empty house"]
-    assert reports.deposit_register(conn, TODAY).totals["held_cents"] == 100000
     d = dashboard.build(conn, TODAY)
     assert d["units"] == 3 and d["occupied"] == 2 and len(d["late"]) == 2 and d["owed"] == 350000

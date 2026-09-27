@@ -682,12 +682,12 @@ At the owner's request the app was **simplified to the essentials**: add a prope
 
 - **Screens:** Dashboard · Properties · Tenants · Collect rent · Payments · Late · Reports · Settings, plus global search and a Quit button.
 - **Properties:** add, edit and delete properties, with optional units (type "4" or "A, B, C").
-- **Tenants:** add a tenant to a property (or without one, and link them later), with optional co-tenants.
-- **Tenant page:** balance, whether and how long they're late, last payment, payment history, and recording or deleting payments. From there you can also add a charge or credit, change the rent, track the security deposit, mark them moved out, and print a statement.
-- **Rent billing:** automatic (prorated partial months). For tenants who moved in before they were added, billing starts from the current month, and anything they owed before goes in "Already owes".
+- **Tenants:** add a tenant to a property (or without one, and link them later). Extra people can be added on the tenant page.
+- **Tenant page:** balance, whether and how long they're late, last payment, payment history, and recording or deleting payments. **Add debt** records money owed besides rent (an old balance, a repair) and adds it to the balance. Rent changes go through Edit and start with the next bill. You can also print a statement.
+- **Rent billing:** automatic (prorated partial months). For tenants who moved in before they were added, billing starts from the current month, and anything they owed before goes in "Debt".
 - **Collect rent:** a keyboard-driven grid for entering everyone's payments.
 - **Late:** who is behind, by how many days and how much; optional late fees that you charge or skip.
-- **Reports:** rent roll, who owes money, monthly collections, vacant units, security deposits. All printable and exportable to CSV.
+- **Reports:** rent roll, who owes money, monthly collections, vacant units. All printable and exportable to CSV.
 - **Settings:** your name for receipts, default late fee and grace days, when to bill rent, proration method.
 - **Delete:** on everything, with a confirmation page for properties, units and tenants.
 
@@ -697,6 +697,6 @@ At the owner's request the app was **simplified to the essentials**: add a prope
 - The audit log of every change.
 - The books lock and payment application rules described above.
 
-**Removed from the app:** owners, expenses and vendors (and the P&L, Schedule E, 1099 and performance reports that depend on them), CSV import, the Backups and Audit log pages, documents, tags, and voiding. The database still has the tables, so any of these can be brought back later.
+**Removed from the app:** owners, expenses and vendors (and the P&L, Schedule E, 1099 and performance reports that depend on them), CSV import, the Backups and Audit log pages, documents, tags, voiding, separate charges and credits, security deposits, moving out, lease end dates, and tenant email. The database still has the tables, so any of these can be brought back later.
 
 **Windows packaging:** GitHub Actions builds a per-user installer (Inno Setup) and a portable single-file `.exe` (PyInstaller) on every push. The build runs the tests on Windows, self-tests both builds, smoke-tests the app with demo data, and opens the real app window. See `packaging/` and `.github/workflows/windows-build.yml`.

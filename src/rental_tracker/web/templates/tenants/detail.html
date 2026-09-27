@@ -10,7 +10,6 @@
 <div class="card" style="max-width:640px">
   <dl class="kv">
     <dt>Phone</dt><dd>{{ tenant.phone or '—' }}</dd>
-    <dt>Email</dt><dd>{% if tenant.email %}<a href="mailto:{{ tenant.email }}">{{ tenant.email }}</a>{% else %}—{% endif %}</dd>
     {% if tenant.notes %}<dt>Notes</dt><dd style="white-space:pre-wrap">{{ tenant.notes }}</dd>{% endif %}
   </dl>
 </div>

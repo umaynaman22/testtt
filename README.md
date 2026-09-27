@@ -5,6 +5,7 @@ A simple rental tracker that runs **entirely on your own computer, with no inter
 - **Add a property**, then **add a tenant** to it. Every field is optional.
 - Rent is **billed automatically** each month.
 - **Record payments**, one at a time or all at once on the *Collect rent* screen.
+- **Add debt** for anything a tenant owes besides rent.
 - See **balances**, **who's late** and by how many days, and each tenant's full **payment history**.
 - Print receipts and statements, and export lists for Excel.
 
@@ -68,8 +69,9 @@ The app opens in its own window. If pywebview is not installed, it opens in your
 **Getting started:**
 
 1. **Properties → Add property.** Type the address, or leave everything blank and fill it in later.
-2. On the property page, click **Add tenant**. A name and the monthly rent are enough. For someone who already lives there, the app bills rent from this month; put anything they owed before in **Already owes**.
+2. On the property page, click **Add tenant**. A name and the monthly rent are enough. For someone who already lives there, the app bills rent from this month; put anything they owed before in **Debt**.
 3. When rent comes in, open the tenant and use **Record a payment**, or go to **Collect rent** to enter everyone's at once.
+   To add something they owe besides rent, like a repair, use **Add debt** on the tenant's page.
 4. **Late** shows who is behind and by how many days. The dashboard shows the totals.
 
 Your name or business for receipts, and a default late fee, are under **Settings**.

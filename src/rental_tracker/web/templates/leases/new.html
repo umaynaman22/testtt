@@ -13,21 +13,17 @@
     {% if not person %}
     {{ m.input("name", "Name", placeholder="e.g. Ann Lee", attrs='autofocus') }}
     {{ m.input("phone", "Phone") }}
-    {{ m.input("email", "Email", type="email") }}
     {% endif %}
     {{ m.money("rent", "Monthly rent") }}
     {{ m.input("rent_due_day", "Rent due on day", type="number", attrs='min="1" max="28"', help="Day of the month") }}
     {{ m.date("moved_in", "Moved in") }}
-    {{ m.money("owes_now", "Already owes", help="Unpaid rent from before today, if any") }}
-    {{ m.money("deposit", "Deposit you hold") }}
+    {{ m.money("debt", "Debt", help="Anything they already owe you, like unpaid rent from before") }}
   </div>
   <details class="section" style="margin-top:10px"><summary>More options</summary>
     <div class="form-grid" style="margin-top:8px">
-      {{ m.input("second_name", "Second person on the lease") }}
       {{ m.money("late_fee", "Late fee", help="Blank = no late fee") }}
       {{ m.input("grace_days", "Days before rent counts as late", type="number", attrs='min="0" max="60"') }}
       {{ m.date("billing_start", "Start billing rent from", help="Blank = from the move-in date, or from this month for tenants who moved in earlier") }}
-      {{ m.date("end_date", "Lease ends") }}
       {{ m.textarea("notes", "Notes") }}
     </div>
   </details>

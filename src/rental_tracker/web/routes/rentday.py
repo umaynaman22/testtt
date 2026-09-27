@@ -127,7 +127,7 @@ def payments():
     total = sum(r["amount_cents"] for r in rows if not r["voided_at"])
     props = [(p["id"], p["code"]) for p in portfolio.list_properties(db(), status="all")]
     return render_template("rentday/payments.html", rows=rows, total=total, start=start, end=end,
-                           methods=options([*ledger.PAYMENT_METHODS, "deposit_applied"], METHOD_LABELS), props=props)
+                           methods=options(ledger.PAYMENT_METHODS, METHOD_LABELS), props=props)
 
 
 @bp.route("/payments/<int:payment_id>/delete", methods=["POST"])

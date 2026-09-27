@@ -99,7 +99,7 @@ def create_lease(conn: sqlite3.Connection, *, unit_id: int, tenants: list[tuple[
     if status == "active":
         existing = _current_lease_on_unit(conn, unit_id)
         if existing:
-            raise ServiceError("Someone already lives there. Record their move-out first, or use "
+            raise ServiceError("Someone already lives there. Remove the current tenant first, or use "
                                "'Add another person' on their page for roommates.")
     data = {"unit_id": unit_id, "status": status, "start_date": start_d.isoformat(),
             "end_date": end_d.isoformat() if end_d else None, "rent_cents": rent_cents,

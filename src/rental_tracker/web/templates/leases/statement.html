@@ -21,6 +21,5 @@
     </tbody>
     <tfoot><tr class="total"><td colspan="4">{{ 'Amount due' if summary.balance > 0 else ('Credit on account' if summary.balance < 0 else 'Balance') }}</td><td class="num">{{ summary.balance|money }}</td></tr></tfoot>
   </table>
-  {% if summary.deposit_held %}<p class="small muted" style="margin-top:14px">Security deposit held: {{ summary.deposit_held|money }}</p>{% endif %}
 </article>
 {% endblock %}
