@@ -47,8 +47,8 @@
   });
   // "Mark paid" or a date on a history line: put the cursor in the box, ready to change and save.
   document.addEventListener("toggle", function (e) {
-    if (e.target.matches && e.target.matches("details.pay-line, details.edit-date") && e.target.open) {
-      var input = e.target.querySelector("input:not([type='hidden'])");
+    if (e.target.matches && e.target.matches("details.pay-line, details.edit-cell") && e.target.open) {
+      var input = e.target.querySelector("input:not([type='hidden']), select");
       if (input) { input.focus(); if (input.select) { input.select(); } }
     }
   }, true);

@@ -199,12 +199,18 @@ details.section > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 .tabs a:hover { text-decoration: none; color: var(--text); }
 
 /* ---- rent day ---- */
-details.edit-date > summary { list-style: none; cursor: pointer; border-bottom: 1px dashed var(--text-muted); display: inline; }
-details.edit-date > summary::-webkit-details-marker { display: none; }
-details.edit-date > summary:hover { color: var(--accent); border-bottom-color: var(--accent); }
-details.edit-date[open] > summary { display: none; }
-details.edit-date form { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
-details.edit-date input { width: 128px; padding: 3px 4px; font-size: .88rem; }
+/* click-to-change values in the payment history */
+details.edit-cell > summary { list-style: none; cursor: pointer; border-bottom: 1px dashed var(--text-muted); display: inline; }
+details.edit-cell > summary::-webkit-details-marker { display: none; }
+details.edit-cell > summary:hover { color: var(--accent); border-bottom-color: var(--accent); }
+details.edit-cell[open] > summary { display: none; }
+details.edit-cell form { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+details.edit-cell.right form { align-items: flex-end; }
+details.edit-cell input, details.edit-cell select { width: 108px; padding: 3px 4px; font-size: .88rem; }
+details.edit-cell input[name="amount"] { width: 104px; text-align: right; }
+details.edit-cell input[name="description"] { width: 110px; }
+details.edit-cell input.method-other { display: none; }
+details.edit-cell select[data-method]:has(option[value="other"]:checked) + input.method-other { display: block; }
 details.pay-line { display: inline-block; text-align: right; }
 details.pay-line > summary { list-style: none; cursor: pointer; }
 details.pay-line > summary::-webkit-details-marker { display: none; }

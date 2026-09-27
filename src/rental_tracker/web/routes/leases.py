@@ -186,15 +186,18 @@ def pay_line(lease_id: int, charge_id: int):
     return _back(lease_id, "history")
 
 
-@bp.route("/leases/<int:lease_id>/date/<any(payment, charge):kind>/<int:entry_id>", methods=["POST"])
-def change_date(lease_id: int, kind: str, entry_id: int):
-    """Change the date of one line of the payment history."""
+@bp.route("/leases/<int:lease_id>/line/<any(payment, charge):kind>/<int:entry_id>", methods=["POST"])
+def edit_line(lease_id: int, kind: str, entry_id: int):
+    """Change a box of the payment history: a date, what it's for, an amount, or how they paid."""
     f = Form(request.form)
-    with attempt("Date changed"):
-        when = f.date("date", "Date")
+    with attempt("Saved"):
+        values = {"date": f.date("date", "Date"), "amount": f.money("amount", "Amount")}
+        if "description" in request.form:
+            values["description"] = f.raw("description")
+        if "method" in request.form:
+            values.update(method=f.raw("method") or "other", method_other=f.str("method_other"))
         f.check()
-        if when:
-            ledger.change_date(db(), lease_id, kind, entry_id, when)
+        ledger.edit_line(db(), lease_id, kind, entry_id, **values)
     return _back(lease_id, "history")
 
 

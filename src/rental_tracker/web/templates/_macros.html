@@ -48,6 +48,13 @@
   <input name="method_other" value="{{ other or '' }}" placeholder="Type how they paid" maxlength="60" autocomplete="off"></label>
 {%- endmacro %}
 
+{# A value you can click to change in place: shows `shown`; the caller supplies the input(s). #}
+{% macro edit_cell(action, shown, right=False) -%}
+<details class="edit-cell{{ ' right' if right }}"><summary title="Click to change">{{ shown }}</summary>
+  <form method="post" action="{{ action }}">{{ csrf() }}{{ caller() }}<button class="btn small primary">Save</button></form>
+</details>
+{%- endmacro %}
+
 {% macro checkbox(name, label, checked=False) -%}
 <label class="field check"><input type="checkbox" name="{{ name }}" value="1" {{ 'checked' if checked }}><span>{{ label }}</span></label>
 {%- endmacro %}

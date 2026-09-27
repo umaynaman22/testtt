@@ -269,20 +269,54 @@ def test_change_dates_in_payment_history(app, client):
         "SELECT id, lease_id FROM payments ORDER BY id LIMIT 1").fetchone()
     charge = q(app, f"SELECT id FROM charges WHERE lease_id = {lid} AND charge_type = 'rent' ORDER BY due_date LIMIT 1")[0]
     page = client.get(f"/leases/{lid}").get_data(as_text=True)
-    assert f"/leases/{lid}/date/payment/{pay}" in page and f"/leases/{lid}/date/charge/{charge}" in page
-    r = client.post(f"/leases/{lid}/date/payment/{pay}", data={"csrf_token": token, "date": "2026-03-09"},
+    assert f"/leases/{lid}/line/payment/{pay}" in page and f"/leases/{lid}/line/charge/{charge}" in page
+    r = client.post(f"/leases/{lid}/line/payment/{pay}", data={"csrf_token": token, "date": "2026-03-09"},
                     follow_redirects=True)
-    assert "Date changed" in r.get_data(as_text=True)
+    assert "Saved" in r.get_data(as_text=True)
     assert q(app, f"SELECT received_date FROM payments WHERE id = {pay}") == ["2026-03-09"]
-    client.post(f"/leases/{lid}/date/charge/{charge}", data={"csrf_token": token, "date": "2026-03-05"})
+    client.post(f"/leases/{lid}/line/charge/{charge}", data={"csrf_token": token, "date": "2026-03-05"})
     assert q(app, f"SELECT due_date FROM charges WHERE id = {charge}") == ["2026-03-05"]
-    r = client.post(f"/leases/{lid}/date/charge/{charge}", data={"csrf_token": token, "date": "31/31/2026"},
+    r = client.post(f"/leases/{lid}/line/charge/{charge}", data={"csrf_token": token, "date": "31/31/2026"},
                     follow_redirects=True)
     assert "error" in r.get_data(as_text=True) and q(app, f"SELECT due_date FROM charges WHERE id = {charge}") == ["2026-03-05"]
     other = q(app, f"SELECT id FROM payments WHERE lease_id <> {lid} LIMIT 1")[0]
-    client.post(f"/leases/{lid}/date/payment/{other}", data={"csrf_token": token, "date": "2020-01-01"})
+    client.post(f"/leases/{lid}/line/payment/{other}", data={"csrf_token": token, "date": "2020-01-01"})
     assert q(app, f"SELECT received_date FROM payments WHERE id = {other}") != ["2020-01-01"]  # not this tenant's
-    assert client.post(f"/leases/{lid}/date/tenant/1", data={"csrf_token": token, "date": "2026-01-01"}).status_code == 404
+    assert client.post(f"/leases/{lid}/line/tenant/1", data={"csrf_token": token, "date": "2026-01-01"}).status_code == 404
+
+
+def test_every_box_in_payment_history_can_be_changed(app, client):
+    token = csrf(client)
+    pid = client.post("/properties/new", data={"csrf_token": token, "name": "3 Dahlia St"}).headers["Location"].split("/")[-1]
+    unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
+    lid = client.post("/tenants/new", data={"csrf_token": token, "unit_id": unit, "name": "Nina Cruz", "rent": "9000",
+                                            "moved_in": "2026-09-01"}).headers["Location"].split("/")[-1]
+    client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": "9000", "method": "cash"})
+    rent = q(app, f"SELECT id FROM charges WHERE lease_id = {lid}")[0]
+    pay = q(app, f"SELECT id FROM payments WHERE lease_id = {lid}")[0]
+    page = client.get(f"/leases/{lid}").get_data(as_text=True)
+    assert page.count(f"/leases/{lid}/line/charge/{rent}") == 3  # date, what, charged
+    assert page.count(f"/leases/{lid}/line/payment/{pay}") == 3  # date, how they paid, paid
+    line = f"/leases/{lid}/line/charge/{rent}"
+    client.post(line, data={"csrf_token": token, "description": "Rent for September (discounted)"})
+    client.post(line, data={"csrf_token": token, "amount": "8,500"})
+    assert q(app, f"SELECT description || '|' || amount_cents FROM charges WHERE id = {rent}") == [
+        "Rent for September (discounted)|850000"]
+    pline = f"/leases/{lid}/line/payment/{pay}"
+    client.post(pline, data={"csrf_token": token, "amount": "8500"})
+    client.post(pline, data={"csrf_token": token, "method": "other", "method_other": "Maya"})
+    assert [tuple(r) for r in dbmod.connect(app.extensions["rental_tracker"].data.db).execute(
+        f"SELECT amount_cents, method, method_other FROM payments WHERE id = {pay}")] == [(850000, "other", "Maya")]
+    page = client.get(f"/leases/{lid}").get_data(as_text=True)
+    assert "Rent for September (discounted)" in page and "Payment — Maya" in page
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}") == [0]  # balance follows
+    r = client.post(pline, data={"csrf_token": token, "amount": "0"}, follow_redirects=True)
+    assert "greater than zero" in r.get_data(as_text=True)
+    client.post(pline, data={"csrf_token": token, "method": "gcash", "method_other": "ignored"})
+    assert q(app, f"SELECT method || '/' || COALESCE(method_other, '') FROM payments WHERE id = {pay}") == ["gcash/"]
+    client.post(line, data={"csrf_token": token, "description": ""})  # blank: back to the standard name
+    assert q(app, f"SELECT description FROM charges WHERE id = {rent}") == [None]
+    assert "rent" in client.get(f"/leases/{lid}").get_data(as_text=True).lower()
 
 
 def test_tenant_without_property_can_be_linked_later(app, client):

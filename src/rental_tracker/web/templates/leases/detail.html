@@ -73,18 +73,22 @@
         <thead><tr><th>Date</th><th>What</th><th class="num">Charged</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead>
         <tbody>
         {% for e in entries %}
+          {% set line_url = url_for('leases.edit_line', lease_id=lease.id, kind=e.kind, entry_id=e.id) %}
           <tr class="{{ 'voided' if e.voided_at }}">
-            <td class="nowrap">
-              <details class="edit-date"><summary title="Click to change the date">{{ e.date|fdate }}</summary>
-                <form method="post" action="{{ url_for('leases.change_date', lease_id=lease.id, kind=e.kind, entry_id=e.id) }}">
-                  {{ m.csrf() }}<input type="date" name="date" value="{{ e.date }}" aria-label="New date">
-                  <button class="btn small primary">Save</button>
-                </form>
-              </details></td>
-            <td>{{ e.description }}{% if e.voided_at %} <span class="small keep">(voided: {{ e.void_reason }})</span>{% endif %}</td>
-            <td class="num">{{ e.charge|money(true) }}</td>
+            <td class="nowrap">{% call m.edit_cell(line_url, e.date|fdate) %}<input type="date" name="date" value="{{ e.date }}" aria-label="Date">{% endcall %}</td>
+            <td>
+              {%- if e.kind == 'payment' %}
+                {% call m.edit_cell(line_url, e.description) %}<select name="method" data-method aria-label="How they paid">
+                  {% for v, t in methods %}<option value="{{ v }}" {{ 'selected' if v == e.type }}>{{ t }}</option>{% endfor %}</select>
+                  <input class="method-other" name="method_other" value="{{ e.method_other or '' }}" maxlength="60" placeholder="Type how they paid" aria-label="Other method">{% endcall %}
+              {%- else %}
+                {% call m.edit_cell(line_url, e.description) %}<input name="description" value="{{ e.description }}" maxlength="120" aria-label="What it's for">{% endcall %}
+              {%- endif %}
+              {%- if e.voided_at %} <span class="small keep">(voided: {{ e.void_reason }})</span>{% endif %}</td>
+            <td class="num">{% if e.charge %}{% call m.edit_cell(line_url, e.charge|money, right=True) %}<input name="amount" inputmode="decimal" autocomplete="off" value="{{ e.charge|input_money }}" aria-label="Amount charged">{% endcall %}{% endif %}</td>
             <td class="num {{ 'pos' if e.kind == 'payment' }}">
-              {%- if e.unpaid is none %}{{ e.credit|money(true) }}
+              {%- if e.kind == 'payment' %}{% call m.edit_cell(line_url, e.credit|money, right=True) %}<input name="amount" inputmode="decimal" autocomplete="off" value="{{ e.credit|input_money }}" aria-label="Amount paid">{% endcall %}
+              {%- elif e.unpaid is none %}{{ e.credit|money(true) }}
               {%- elif e.unpaid == 0 %}<span class="small pos keep">Paid</span>
               {%- else %}
                 {% if e.unpaid < e.charge %}<div class="small muted keep">{{ (e.charge - e.unpaid)|money }} paid</div>{% endif %}

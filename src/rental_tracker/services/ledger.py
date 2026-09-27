@@ -124,6 +124,7 @@ def ledger_entries(conn: sqlite3.Connection, lease_id: int) -> list[dict]:
                      "description": desc, "period": None, "charge": 0, "credit": r["amount_cents"],
                      "voided_at": r["voided_at"], "void_reason": r["void_reason"],
                      "receipt_number": r["receipt_number"], "notes": r["notes"], "unpaid": None,
+                     "method_other": r["method_other"],
                      "sort": (r["received_date"], 1, r["id"])})
     rows.sort(key=lambda x: x["sort"])
     running = 0
@@ -243,21 +244,38 @@ def fill_rent_paid(conn: sqlite3.Connection, lease_id: int, through: date, today
     return len(items), sum(amount for _, amount in items)
 
 
-def change_date(conn: sqlite3.Connection, lease_id: int, kind: str, entry_id: int, new_date: str) -> str:
-    """Change the date of one line of a tenant's history: a payment's date received, or a bill's due date.
+def edit_line(conn: sqlite3.Connection, lease_id: int, kind: str, entry_id: int, *, date: str | None = None,
+              description: str | None = None, amount: int | None = None, method: str | None = None,
+              method_other: str | None = None) -> dict:
+    """Change one line of a tenant's payment history; only the values given change.
 
-    Returns the old date. Money is re-applied from the new dates, as always.
+    A bill (kind 'charge'): due date, description, amount. A payment: date received, amount,
+    how they paid. Balances are recalculated from the lines, as always. Returns what changed.
     """
-    table, column = {"payment": ("payments", "received_date"), "charge": ("charges", "due_date")}[kind]
+    table, date_col = {"payment": ("payments", "received_date"), "charge": ("charges", "due_date")}[kind]
     row = row_or_error(conn, f"SELECT * FROM {table} WHERE id = ? AND lease_id = ?", (entry_id, lease_id), "Line")
-    new = parse_date(new_date).isoformat()
-    old = row[column]
-    if new == old:
-        return old
-    ensure_open(conn, min(old, new))
-    conn.execute(f"UPDATE {table} SET {column} = ? WHERE id = ?", (new, entry_id))
-    audit(conn, "update", kind, entry_id, {column: [old, new]})
-    return old
+    new: dict = {}
+    if date:
+        new[date_col] = parse_date(date).isoformat()
+    if amount is not None:
+        _positive(amount, "The amount")
+        new["amount_cents"] = -amount if kind == "charge" and row["amount_cents"] < 0 else amount
+    if kind == "charge" and description is not None:
+        new["description"] = " ".join(description.split())[:120] or None
+    if kind == "payment" and method is not None:
+        if row["method"] == "deposit_applied":
+            raise ServiceError("This payment came from the security deposit")
+        if method not in PAYMENT_METHODS:
+            raise ServiceError("Unknown payment method")
+        new["method"] = method
+        new["method_other"] = (" ".join((method_other or "").split())[:60] or None) if method == "other" else None
+    changes = {k: [row[k], v] for k, v in new.items() if row[k] != v}
+    if changes:
+        ensure_open(conn, min(row[date_col], new.get(date_col, row[date_col])))
+        conn.execute(f"UPDATE {table} SET {', '.join(f'{k} = ?' for k in changes)} WHERE id = ?",
+                     (*[v for _, v in changes.values()], entry_id))
+        audit(conn, "update", kind, entry_id, changes)
+    return changes
 
 
 def pay_line(conn: sqlite3.Connection, lease_id: int, charge_id: int, amount: int | None, today: date) -> dict:
