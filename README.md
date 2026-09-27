@@ -1,13 +1,17 @@
 # Rental Tracker (offline)
 
-A rental property manager that runs **entirely on your own computer, with no internet**. It is built for portfolios of **50+ properties**.
+A simple rental tracker that runs **entirely on your own computer, with no internet**. It works for one house or 50+ properties.
 
-It covers properties, units, tenants and leases, and bills rent automatically with proration and late fees. You record payments on a fast "Rent Day" grid and print receipts. It also tracks security deposits and expenses with receipts, and produces 12 reports, including rent roll, aging, P&L and Schedule E. Backups happen automatically, and you can bulk-import your properties from spreadsheets.
+- **Add a property**, then **add a tenant** to it. Every field is optional.
+- Rent is **billed automatically** each month.
+- **Record payments**, one at a time or all at once on the *Collect rent* screen.
+- See **balances**, **who's late** and by how many days, and each tenant's full **payment history**.
+- Print receipts and statements, and export lists for Excel.
 
 | Document | What's in it |
 |---|---|
-| [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) | The design: architecture, money rules, features, screens, reports, backups, security, roadmap, and [build status](docs/BLUEPRINT.md#18-build-status) |
-| [`src/rental_tracker/db/migrations/0001_initial.sql`](src/rental_tracker/db/migrations/0001_initial.sql) | The database: 33 tables, constraints, rent-roll and occupancy views, and seed categories and settings (later changes are in the numbered files next to it) |
+| [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) | The original full design, and [what the app includes today](docs/BLUEPRINT.md#18-build-status) |
+| [`src/rental_tracker/db/migrations/0001_initial.sql`](src/rental_tracker/db/migrations/0001_initial.sql) | The database design (later changes are in the numbered files next to it) |
 
 ## Windows app (.exe)
 
@@ -61,29 +65,31 @@ python -m rental_tracker --browser       # use your web browser instead of a win
 
 The app opens in its own window. If pywebview is not installed, it opens in your browser instead. It only listens on `127.0.0.1` (this computer), and each launch uses a new secret link. Close the window, or click **Quit** in the sidebar, to exit; a backup is saved on the way out.
 
-**First steps with real data:**
+**Getting started:**
 
-1. **Owners** → add yourself or your LLC.
-2. **Import** → download the CSV templates and fill them in. Run **Check files** (this saves nothing), fix any errors it lists, then click **Import now**.
-3. **Backups** → set an external drive folder.
-4. Each month, open **Rent Day**, type each payment and press Enter. Then review **Late fees**.
+1. **Properties → Add property.** Type the address, or leave everything blank and fill it in later.
+2. On the property page, click **Add tenant**. A name and the monthly rent are enough. For someone who already lives there, the app bills rent from this month; put anything they owed before in **Already owes**.
+3. When rent comes in, open the tenant and use **Record a payment**, or go to **Collect rent** to enter everyone's at once.
+4. **Late** shows who is behind and by how many days. The dashboard shows the totals.
+
+Your name or business for receipts, and a default late fee, are under **Settings**.
 
 ## Your data
 
 Everything lives in one folder (default `Documents/RentalTracker`):
 
 ```
-rental.db      the database      documents/   receipts, leases, photos
-backups/       daily, weekly, monthly and safety copies     imports/   archived CSV imports
+rental.db      the database
+backups/       automatic copies (daily, weekly, monthly, and before deletes)
 ```
 
-To move to a new computer, copy the folder and start the app with `--data-dir` pointing at it. Never copy `rental.db` while the app is running; use **Backups → Back up now** instead.
+A copy of the database is saved automatically every day, when you quit, and before anything is deleted (in `backups/`). To move to a new computer, copy the whole folder while the app is closed.
 
 ## Develop
 
 ```bash
 pip install -e ".[dev]"
-pytest                      # 93 tests: money rules, services, every page, security checks
+pytest                      # tests: money rules, services, every page, security checks
 ```
 
 The code layout is described in [BLUEPRINT §13](docs/BLUEPRINT.md#13-code-structure). The business rules live in `src/rental_tracker/domain/` as pure functions.

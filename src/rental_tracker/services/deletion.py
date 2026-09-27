@@ -2,13 +2,13 @@
 
 Two kinds of delete:
 
-* **Single entries** (a payment, charge, credit, expense, deposit entry, rent
-  change or add-on). Removed right away after a confirm click. Voiding is still
+* **Single entries** (a payment, charge, credit, deposit entry, rent change
+  or add-on). Removed right away after a confirm click. Voiding is still
   available when you want a visible, crossed-out record instead.
-* **Records with history** (owner, property, unit, lease, tenant, vendor,
-  category). ``preview()`` lists everything that would go and anything that
-  blocks it; ``delete()`` then removes it all in one transaction. The web
-  layer takes a safety backup first.
+* **Records with history** (property, unit, tenancy, tenant). ``preview()``
+  lists everything that would go and anything that blocks it; ``delete()``
+  then removes it all in one transaction. The web layer takes a safety
+  backup first.
 
 Every delete writes a full copy of the removed row to the audit log, and
 nothing dated inside the locked period (Settings → books locked through) can be
@@ -23,9 +23,6 @@ from datetime import date
 from ..domain.periods import parse_date
 from . import rent_posting, search
 from .common import ServiceError, audit, books_locked_through, ensure_open, row_or_error
-
-CONFIRM_WORD = "DELETE"
-
 
 def _q(ids: list[int]) -> str:
     return ",".join("?" * len(ids)) or "NULL"
@@ -95,15 +92,6 @@ def delete_deposit(conn: sqlite3.Connection, txn_id: int) -> str:
     return "Deposit entry deleted."
 
 
-def delete_expense(conn: sqlite3.Connection, expense_id: int) -> str:
-    e = row_or_error(conn, "SELECT * FROM expenses WHERE id = ?", (expense_id,), "Expense")
-    ensure_open(conn, e["expense_date"])
-    _delete_documents(conn, "expense", [expense_id])
-    conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
-    audit(conn, "delete", "expense", expense_id, dict(e))
-    return "Expense deleted."
-
-
 def delete_rent_change(conn: sqlite3.Connection, change_id: int) -> str:
     r = row_or_error(conn, "SELECT * FROM lease_rent_changes WHERE id = ?", (change_id,), "Rent change")
     conn.execute("DELETE FROM lease_rent_changes WHERE id = ?", (change_id,))
@@ -119,13 +107,6 @@ def delete_recurring_charge(conn: sqlite3.Connection, rc_id: int) -> str:
     conn.execute("DELETE FROM lease_recurring_charges WHERE id = ?", (rc_id,))
     audit(conn, "delete", "recurring_charge", rc_id, dict(rc))
     return f"Add-on deleted. {_plural(n, 'month')} already billed stay on the ledger." if n else "Add-on deleted."
-
-
-def delete_document(conn: sqlite3.Connection, doc_id: int) -> str:
-    d = row_or_error(conn, "SELECT * FROM documents WHERE id = ?", (doc_id,), "Document")
-    conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
-    audit(conn, "delete", "document", doc_id, dict(d))
-    return "Document deleted."
 
 
 def _delete_documents(conn, related_type: str, ids: list[int]) -> int:
@@ -149,14 +130,10 @@ class Preview:
     warnings: list[str] = field(default_factory=list)
     money_entries: int = 0                        # payments, charges, deposit entries, expenses removed
     parent: dict = field(default_factory=dict)    # ids used to choose where to go afterwards
-    move_choices: list[tuple[int, str]] = field(default_factory=list)  # categories only
-
-    @property
-    def needs_typed_confirm(self) -> bool:
-        return self.money_entries > 0 or len(self.removes) > 2
 
 
-KINDS = ("owner", "property", "unit", "lease", "tenant", "vendor", "category")
+
+KINDS = ("property", "unit", "lease", "tenant")
 
 
 def _ids(conn, sql: str, params) -> list[int]:
@@ -224,17 +201,17 @@ def _preview_lease(conn, lease_id: int) -> Preview:
     names = ", ".join(r[0] for r in conn.execute(
         "SELECT t.first_name || ' ' || t.last_name FROM lease_tenants lt JOIN tenants t ON t.id = lt.tenant_id "
         "WHERE lt.lease_id = ?", (lease_id,)))
-    p = Preview("lease", lease_id, f"the lease for {lease['code']} · {lease['unit_label']}"
-                + (f" ({names})" if names else ""), parent={"unit_id": lease["unit_id"]})
-    p.removes.append(f"the lease itself ({lease['status'].replace('_', ' ')}, starting {lease['start_date']})")
+    place = lease["code"] if lease["unit_label"] == "Main" else f"{lease['code']} · {lease['unit_label']}"
+    p = Preview("lease", lease_id, f"{names or 'this tenant'} at {place}",
+                parent={"unit_id": lease["unit_id"], "property_id": lease["property_id"]})
+    p.removes.append(f"the tenancy (since {lease['start_date']}) and its rent history")
     _describe_leases(conn, p, [lease_id])
-    extras = _count(conn, "SELECT COUNT(*) FROM lease_rent_changes WHERE lease_id = ?", (lease_id,)) + \
-        _count(conn, "SELECT COUNT(*) FROM lease_recurring_charges WHERE lease_id = ?", (lease_id,))
-    if extras:
-        p.removes.append(_plural(extras, "rent change or add-on"))
-    p.keeps.append("The tenants' own records (contact details) stay under Tenants.")
-    if lease["status"] in ("ended", "terminated"):
-        p.warnings.append("This is past history. For taxes and references you may want to keep it.")
+    only_here = _only_on_lease(conn, lease_id)
+    if only_here:
+        p.removes.append("the tenant record" + ("s" if len(only_here) > 1 else "") + " (name, phone, email)")
+    if lease["status"] in ("active", "month_to_month"):
+        p.warnings.append("If they moved out, use 'Moved out' on their page instead, so their payment "
+                          "history is kept.")
     _lock_blocker(conn, p, [lease_id])
     return p
 
@@ -246,12 +223,11 @@ def _preview_unit(conn, unit_id: int) -> Preview:
     p.removes.append("the unit")
     leases = _ids(conn, "SELECT id FROM leases WHERE unit_id = ?", (unit_id,))
     _describe_leases(conn, p, leases)
-    n_exp = _count(conn, "SELECT COUNT(*) FROM expenses WHERE unit_id = ?", (unit_id,))
-    if n_exp:
-        p.keeps.append(f"{_plural(n_exp, 'expense')} for this unit stay on the property.")
+    people = sorted({t for lid in leases for t in _only_on_lease(conn, lid)})
+    if people:
+        p.removes.append(_plural(len(people), "tenant record"))
     if _count(conn, "SELECT COUNT(*) FROM units WHERE property_id = ?", (u["property_id"],)) == 1:
-        p.warnings.append("This is the property's only unit. The property will have no units until you add one.")
-    p.warnings.append("If the unit is being renovated, you can set its status to Offline instead.")
+        p.warnings.append("This is the property's only unit. You can add a new one on the property page.")
     _lock_blocker(conn, p, leases)
     return p
 
@@ -265,7 +241,7 @@ def _property_scope(conn, pid: int) -> tuple[list[int], list[int], list[int]]:
 
 def _preview_property(conn, pid: int) -> Preview:
     prop = row_or_error(conn, "SELECT * FROM properties WHERE id = ?", (pid,), "Property")
-    p = Preview("property", pid, f"property {prop['code']} ({prop['name']})", parent={"owner_id": prop["owner_id"]})
+    p = Preview("property", pid, prop["name"] or prop["code"], parent={"owner_id": prop["owner_id"]})
     units, leases, expenses = _property_scope(conn, pid)
     p.removes.append("the property")
     if units:
@@ -274,83 +250,26 @@ def _preview_property(conn, pid: int) -> Preview:
     if expenses:
         p.removes.append(_plural(len(expenses), "expense"))
         p.money_entries += len(expenses)
-    other = sum(_count(conn, f"SELECT COUNT(*) FROM {t} WHERE property_id = ?", (pid,))
-                for t in ("loans", "insurance_policies", "work_orders", "recurring_expenses"))
-    if other:
-        p.removes.append(_plural(other, "loan, policy, work order or recurring bill"))
-    if prop["status"] == "active":
-        p.warnings.append("Sold it? Set its status to Sold instead (Edit), so its income and expenses stay "
-                          "in your reports for taxes.")
+    people = sorted({t for lid in leases for t in _only_on_lease(conn, lid)})
+    if people:
+        p.removes.append(_plural(len(people), "tenant record"))
     _lock_blocker(conn, p, leases, expenses)
-    return p
-
-
-def _preview_owner(conn, owner_id: int) -> Preview:
-    owner = row_or_error(conn, "SELECT * FROM owners WHERE id = ?", (owner_id,), "Owner")
-    p = Preview("owner", owner_id, f"owner {owner['name']}")
-    p.removes.append("the owner")
-    props = _ids(conn, "SELECT id FROM properties WHERE owner_id = ?", (owner_id,))
-    all_leases, all_expenses = [], []
-    if props:
-        p.removes.append(_plural(len(props), "property"))
-        n_units = 0
-        for pid in props:
-            units, leases, expenses = _property_scope(conn, pid)
-            n_units += len(units)
-            all_leases += leases
-            all_expenses += expenses
-        if n_units:
-            p.removes.append(_plural(n_units, "unit"))
-        _describe_leases(conn, p, all_leases)
-        if all_expenses:
-            p.removes.append(_plural(len(all_expenses), "expense"))
-            p.money_entries += len(all_expenses)
-        p.warnings.append("To give these properties to another owner instead, change the owner on each property.")
-    _lock_blocker(conn, p, all_leases, all_expenses)
     return p
 
 
 def _preview_tenant(conn, tid: int) -> Preview:
     t = row_or_error(conn, "SELECT * FROM tenants WHERE id = ?", (tid,), "Tenant")
-    p = Preview("tenant", tid, f"tenant {t['first_name']} {t['last_name']}")
-    p.removes.append("the tenant's record (contact details, notes, documents)")
+    p = Preview("tenant", tid, f"{t['first_name']} {t['last_name']}".strip())
+    p.removes.append("their name, phone, email and notes")
     for lease in conn.execute("""
         SELECT l.id, p.code, u.unit_label, (SELECT COUNT(*) FROM lease_tenants x WHERE x.lease_id = l.id) AS n
           FROM lease_tenants lt JOIN leases l ON l.id = lt.lease_id JOIN units u ON u.id = l.unit_id
           JOIN properties p ON p.id = u.property_id WHERE lt.tenant_id = ?""", (tid,)):
         if lease["n"] == 1:
-            p.blockers.append(f"They are the only tenant on the lease for {lease['code']} · {lease['unit_label']} "
-                              f"(lease #{lease['id']}). Delete that lease first, or add another tenant to it.")
+            p.blockers.append(f"They rent {lease['code']} on their own. Open their page and use Delete there.")
         else:
-            p.removes.append(f"their place on the lease for {lease['code']} · {lease['unit_label']} "
-                             "(the other tenants stay)")
-    p.keeps.append("Payments they made stay on the lease ledger.")
-    return p
-
-
-def _preview_vendor(conn, vid: int) -> Preview:
-    v = row_or_error(conn, "SELECT * FROM vendors WHERE id = ?", (vid,), "Vendor")
-    p = Preview("vendor", vid, f"vendor {v['name']}")
-    p.removes.append("the vendor")
-    n = _count(conn, "SELECT COUNT(*) FROM expenses WHERE vendor_id = ?", (vid,))
-    if n:
-        p.keeps.append(f"Their {_plural(n, 'expense')} stay, with no vendor.")
-        p.warnings.append("If you just stopped using them, untick Active on the vendor instead.")
-    return p
-
-
-def _preview_category(conn, cid: int) -> Preview:
-    c = row_or_error(conn, "SELECT * FROM expense_categories WHERE id = ?", (cid,), "Category")
-    p = Preview("category", cid, f"category {c['name']}")
-    p.removes.append("the category")
-    n = _count(conn, "SELECT COUNT(*) FROM expenses WHERE category_id = ?", (cid,)) + \
-        _count(conn, "SELECT COUNT(*) FROM recurring_expenses WHERE category_id = ?", (cid,))
-    if n:
-        p.keeps.append(f"Its {_plural(n, 'expense')} move to the category you choose below.")
-        p.move_choices = [(r["id"], r["name"]) for r in conn.execute(
-            "SELECT id, name FROM expense_categories WHERE id <> ? ORDER BY name COLLATE NOCASE", (cid,))]
-        if not p.move_choices:
-            p.blockers.append("It is the only category. Add another category first.")
+            p.removes.append(f"their name from {lease['code']} (the other people on it stay)")
+            p.keeps = ["Payments already recorded stay on that account."]
     return p
 
 
@@ -360,10 +279,6 @@ def validate(p: Preview, typed: str | None = None, move_to: int | None = None) -
     """Raise ServiceError unless the delete described by ``p`` may go ahead."""
     if p.blockers:
         raise ServiceError(" ".join(p.blockers))
-    if p.needs_typed_confirm and (typed or "").strip().upper() != CONFIRM_WORD:
-        raise ServiceError(f"Type {CONFIRM_WORD} in the box to confirm.")
-    if p.kind == "category" and p.move_choices and move_to not in {c for c, _ in p.move_choices}:
-        raise ServiceError("Choose where its expenses should go.")
 
 
 def delete(conn: sqlite3.Connection, kind: str, record_id: int, *, typed: str | None = None,
@@ -374,13 +289,11 @@ def delete(conn: sqlite3.Connection, kind: str, record_id: int, *, typed: str | 
     before = row_or_error(conn, f"SELECT * FROM {_TABLES[kind]} WHERE id = ?", (record_id,), kind.capitalize())
     globals()[f"_delete_{kind}"](conn, record_id, move_to)
     audit(conn, "delete", kind, record_id, {"record": dict(before), "also_removed": p.removes})
-    if kind in ("owner", "property", "unit", "tenant", "vendor"):
-        search.rebuild(conn)
+    search.rebuild(conn)
     return p
 
 
-_TABLES = {"owner": "owners", "property": "properties", "unit": "units", "lease": "leases", "tenant": "tenants",
-           "vendor": "vendors", "category": "expense_categories"}
+_TABLES = {"property": "properties", "unit": "units", "lease": "leases", "tenant": "tenants"}
 
 
 def _purge_leases(conn, lease_ids: list[int]) -> None:
@@ -411,6 +324,8 @@ def _purge_units(conn, unit_ids: list[int], keep_expenses: bool) -> None:
 
 
 def _purge_property(conn, pid: int) -> None:
+    leases = _ids(conn, "SELECT l.id FROM leases l JOIN units u ON u.id = l.unit_id WHERE u.property_id = ?", (pid,))
+    people = sorted({t for lid in leases for t in _only_on_lease(conn, lid)})
     expenses = _ids(conn, "SELECT id FROM expenses WHERE property_id = ?", (pid,))
     _delete_documents(conn, "expense", expenses)
     conn.execute("DELETE FROM expenses WHERE property_id = ?", (pid,))
@@ -433,26 +348,34 @@ def _purge_property(conn, pid: int) -> None:
     _delete_documents(conn, "property", [pid])
     conn.execute("DELETE FROM properties WHERE id = ?", (pid,))  # tags cascade
     conn.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM property_tags)")
+    for tid in people:
+        _delete_tenant(conn, tid)
+
+
+def _only_on_lease(conn, lease_id: int) -> list[int]:
+    """People on this lease who are not on any other lease."""
+    return _ids(conn, """SELECT lt.tenant_id FROM lease_tenants lt WHERE lt.lease_id = ? AND NOT EXISTS
+                           (SELECT 1 FROM lease_tenants o WHERE o.tenant_id = lt.tenant_id AND o.lease_id <> ?)""",
+                (lease_id, lease_id))
 
 
 def _delete_lease(conn, lease_id: int, _move_to=None) -> None:
+    people = _only_on_lease(conn, lease_id)
     _purge_leases(conn, [lease_id])
+    for tid in people:
+        _delete_tenant(conn, tid)
 
 
 def _delete_unit(conn, unit_id: int, _move_to=None) -> None:
+    leases = _ids(conn, "SELECT id FROM leases WHERE unit_id = ?", (unit_id,))
+    people = sorted({t for lid in leases for t in _only_on_lease(conn, lid)})
     _purge_units(conn, [unit_id], keep_expenses=True)
+    for tid in people:
+        _delete_tenant(conn, tid)
 
 
 def _delete_property(conn, pid: int, _move_to=None) -> None:
     _purge_property(conn, pid)
-
-
-def _delete_owner(conn, owner_id: int, _move_to=None) -> None:
-    for pid in _ids(conn, "SELECT id FROM properties WHERE owner_id = ?", (owner_id,)):
-        _purge_property(conn, pid)
-    conn.execute("UPDATE bank_accounts SET owner_id = NULL WHERE owner_id = ?", (owner_id,))
-    _delete_documents(conn, "owner", [owner_id])
-    conn.execute("DELETE FROM owners WHERE id = ?", (owner_id,))
 
 
 def _delete_tenant(conn, tid: int, _move_to=None) -> None:
@@ -468,17 +391,3 @@ def _delete_tenant(conn, tid: int, _move_to=None) -> None:
     conn.execute("DELETE FROM communications WHERE tenant_id = ?", (tid,))
     _delete_documents(conn, "tenant", [tid])
     conn.execute("DELETE FROM tenants WHERE id = ?", (tid,))
-
-
-def _delete_vendor(conn, vid: int, _move_to=None) -> None:
-    for table in ("expenses", "work_orders", "recurring_expenses"):
-        conn.execute(f"UPDATE {table} SET vendor_id = NULL WHERE vendor_id = ?", (vid,))
-    _delete_documents(conn, "vendor", [vid])
-    conn.execute("DELETE FROM vendors WHERE id = ?", (vid,))
-
-
-def _delete_category(conn, cid: int, move_to: int | None) -> None:
-    if move_to:
-        conn.execute("UPDATE expenses SET category_id = ? WHERE category_id = ?", (move_to, cid))
-        conn.execute("UPDATE recurring_expenses SET category_id = ? WHERE category_id = ?", (move_to, cid))
-    conn.execute("DELETE FROM expense_categories WHERE id = ?", (cid,))

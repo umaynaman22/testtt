@@ -1,24 +1,24 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}Edit lease terms{% endblock %}
+{% block title %}Edit{% endblock %}
 {% block content %}
-{{ m.page_head("Edit lease terms", lease.property_code ~ " · " ~ lease.unit_label, crumbs='<a href="' ~ url_for('leases.detail', lease_id=lease.id) ~ '">Back to lease</a>') }}
-<form method="post" class="card">
+{{ m.page_head("Edit", place(lease.property_code, lease.unit_label), crumbs='<a href="' ~ url_for('leases.detail', lease_id=lease.id) ~ '">Back</a>') }}
+<form method="post" class="card" style="max-width:820px">
   {{ m.csrf() }}
   <div class="form-grid">
-    {{ m.money("rent", "Starting rent", required=True, help="Can only change before rent is billed. Use a rent change after that.") }}
-    {{ m.input("rent_due_day", "Due day of month", type="number", required=True, attrs='min="1" max="28"') }}
-    {{ m.checkbox("prorate_partial_months", "Prorate partial months", values.get('prorate_partial_months') in ['1', 1, 'on']) }}
-    {{ m.date("end_date", "End date", help="Blank = month-to-month") }}
-    {{ m.date("move_in_date", "Move-in date") }}
-    {{ m.money("deposit", "Security deposit (agreed)") }}
-    {{ m.select("late_fee_type", "Late fee", fee_types) }}
-    {{ m.input("late_fee_grace_days", "Grace days", type="number", attrs='min="0" max="60"') }}
-    {{ m.money("late_fee_flat", "Flat fee amount") }}
-    {{ m.input("late_fee_percent", "Percent of rent") }}
-    {{ m.money("late_fee_max", "Maximum fee") }}
+    {% if has_person %}
+    {{ m.input("name", "Name") }}
+    {{ m.input("phone", "Phone") }}
+    {{ m.input("email", "Email", type="email") }}
+    {% endif %}
+    {{ m.money("rent", "Monthly rent", help="If rent was already billed, the new amount starts with the next bill") }}
+    {{ m.input("rent_due_day", "Rent due on day", type="number", attrs='min="1" max="28"') }}
+    {{ m.money("late_fee", "Late fee", help="Blank = no late fee") }}
+    {{ m.input("grace_days", "Days before rent counts as late", type="number", attrs='min="0" max="60"') }}
+    {{ m.date("moved_in", "Moved in") }}
+    {{ m.date("end_date", "Lease ends") }}
     {{ m.textarea("notes", "Notes") }}
   </div>
-  <div class="actions"><button class="btn primary">Save terms</button><a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">Cancel</a></div>
+  <div class="actions"><button class="btn primary">Save</button><a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">Cancel</a></div>
 </form>
 {% endblock %}

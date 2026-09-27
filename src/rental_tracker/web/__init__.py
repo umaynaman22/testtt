@@ -104,8 +104,8 @@ def create_app(data: DataDir, *, launch_token: str | None = None,
     app.extensions["rental_tracker"] = AppState(data=data, launch_token=launch_token,
                                                 today=today_fn or date.today)
 
-    from .routes import admin, expenses, leases, main, properties, rentday, reports, tenants
-    for bp in (main.bp, properties.bp, tenants.bp, leases.bp, rentday.bp, expenses.bp, reports.bp, admin.bp):
+    from .routes import admin, leases, main, properties, rentday, reports, tenants
+    for bp in (main.bp, properties.bp, tenants.bp, leases.bp, rentday.bp, reports.bp, admin.bp):
         app.register_blueprint(bp)
 
     from . import filters

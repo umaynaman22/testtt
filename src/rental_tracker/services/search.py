@@ -1,4 +1,4 @@
-"""Global search over properties, units, tenants, vendors and owners (SQLite FTS5)."""
+"""Global search over properties, units and tenants (SQLite FTS5)."""
 from __future__ import annotations
 
 import re
@@ -18,7 +18,7 @@ def rebuild(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM search_index")
     conn.execute("""
         INSERT INTO search_index(entity_type, entity_id, title, body)
-        SELECT 'property', p.id, p.code || ' — ' || p.name,
+        SELECT 'property', p.id, p.name,
                """ + _join("p.address_line1", "p.address_line2", "p.city", "p.state", "p.postal_code",
                          "p.parcel_number", "p.notes",
                          "(SELECT group_concat(t.name, ' ') FROM property_tags pt "
@@ -26,22 +26,15 @@ def rebuild(conn: sqlite3.Connection) -> None:
           FROM properties p""")
     conn.execute("""
         INSERT INTO search_index(entity_type, entity_id, title, body)
-        SELECT 'unit', u.id, p.code || ' unit ' || u.unit_label,
+        SELECT 'unit', u.id, p.code || ' · ' || u.unit_label,
                """ + _join("p.name", "p.address_line1", "u.notes") + """
-          FROM units u JOIN properties p ON p.id = u.property_id""")
+          FROM units u JOIN properties p ON p.id = u.property_id
+         WHERE (SELECT COUNT(*) FROM units x WHERE x.property_id = u.property_id) > 1""")
     conn.execute("""
         INSERT INTO search_index(entity_type, entity_id, title, body)
         SELECT 'tenant', id, first_name || ' ' || last_name,
                """ + _join("email", "phone", "alt_phone", "external_ref", "notes") + """
           FROM tenants""")
-    conn.execute("""
-        INSERT INTO search_index(entity_type, entity_id, title, body)
-        SELECT 'vendor', id, name, """ + _join("trade", "contact_name", "phone", "email", "notes") + """
-          FROM vendors""")
-    conn.execute("""
-        INSERT INTO search_index(entity_type, entity_id, title, body)
-        SELECT 'owner', id, name, """ + _join("email", "phone", "mailing_address", "notes") + """
-          FROM owners""")
 
 
 def search(conn: sqlite3.Connection, query: str, limit: int = 50) -> list[sqlite3.Row]:

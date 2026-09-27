@@ -2,7 +2,7 @@
 {% import "_macros.html" as m with context %}
 {% block title %}Reports{% endblock %}
 {% block content %}
-{{ m.page_head("Reports", "Every report can be filtered by property, tag or owner, printed, and exported to CSV (opens in Excel)") }}
+{{ m.page_head("Reports", "Each report can be printed or exported for Excel") }}
 <div class="grid-3">
   {% for key, (title, desc) in reports.items() %}
   <a class="card" href="{{ url_for('reports.view', key=key) }}" style="display:block;color:inherit"><h2 style="margin:0 0 4px;color:var(--accent)">{{ title }}</h2><p class="muted small" style="margin:0">{{ desc }}</p></a>

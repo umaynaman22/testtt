@@ -3,16 +3,16 @@
 {% block title %}Statement{% endblock %}
 {% block content %}
 <div class="actions no-print" style="margin:0 0 14px">
-  <a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">← Back to lease</a>
+  <a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">← Back</a>
   <form method="get" style="display:inline-flex;gap:6px;align-items:center"><label class="small">From <input type="date" name="start" value="{{ start }}"></label><button class="btn small">Apply</button></form>
   <button class="btn primary" data-print>Print / Save as PDF</button>
 </div>
 <article class="doc">
   <div class="doc-head">
     <div><h1>Tenant statement</h1><p class="muted">{{ today|fdate }}</p></div>
-    <div style="text-align:right"><strong>{{ owner.name }}</strong><br>{{ owner.mailing_address or '' }}<br>{{ owner.phone or '' }} {{ owner.email or '' }}</div>
+    <div style="text-align:right"><strong>{{ business }}</strong><br><span style="white-space:pre-wrap">{{ business_contact }}</span></div>
   </div>
-  <p><strong>{{ names }}</strong><br>{{ lease.address_line1 }}{% if lease.unit_label != 'Main' %}, unit {{ lease.unit_label }}{% endif %}<br>{{ lease.city }}, {{ lease.state }} {{ lease.postal_code }}</p>
+  <p><strong>{{ names }}</strong><br>{{ place(lease.property_code, lease.unit_label) }}<br>{{ [lease.city, lease.state, lease.postal_code]|select|join(' ') }}</p>
   <table>
     <thead><tr><th>Date</th><th>Description</th><th class="num">Charges</th><th class="num">Payments / credits</th><th class="num">Balance</th></tr></thead>
     <tbody>

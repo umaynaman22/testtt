@@ -1,51 +1,37 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}New lease{% endblock %}
+{% block title %}Add tenant{% endblock %}
 {% block content %}
-{{ m.page_head("New lease", "Rent is billed automatically from the start date", crumbs='<a href="' ~ url_for('leases.index') ~ '">Leases</a>') }}
-<form method="post" class="card">
+{{ m.page_head("Add tenant" if not person else "Link " ~ ((person.first_name ~ " " ~ person.last_name)|trim) ~ " to a property",
+               "Fill in whatever you know — every field is optional and can be changed later.",
+               crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a>') }}
+<form method="post" class="card" style="max-width:820px">
   {{ m.csrf() }}
-  <datalist id="tenant-list">{% for t in tenant_opts %}<option value="{{ t }}">{% endfor %}</datalist>
-  <fieldset><legend>Unit and dates</legend>
-    <div class="form-grid">
-      {{ m.select("unit_id", "Unit", unit_opts, required=True, blank="Choose a unit…") }}
-      {{ m.date("start_date", "Start date", required=True) }}
-      {{ m.date("end_date", "End date", help="Leave blank for month-to-month") }}
-      {{ m.checkbox("draft", "Save as draft (not signed yet)", values.get('draft')) }}
+  {% if person %}<input type="hidden" name="tenant_id" value="{{ person.id }}">{% endif %}
+  <div class="form-grid">
+    {{ m.select("unit_id", "Property", unit_opts, blank="— not yet —") }}
+    {% if not person %}
+    {{ m.input("name", "Name", placeholder="e.g. Ann Lee", attrs='autofocus') }}
+    {{ m.input("phone", "Phone") }}
+    {{ m.input("email", "Email", type="email") }}
+    {% endif %}
+    {{ m.money("rent", "Monthly rent") }}
+    {{ m.input("rent_due_day", "Rent due on day", type="number", attrs='min="1" max="28"', help="Day of the month") }}
+    {{ m.date("moved_in", "Moved in") }}
+    {{ m.money("owes_now", "Already owes", help="Unpaid rent from before today, if any") }}
+    {{ m.money("deposit", "Deposit you hold") }}
+  </div>
+  <details class="section" style="margin-top:10px"><summary>More options</summary>
+    <div class="form-grid" style="margin-top:8px">
+      {{ m.input("second_name", "Second person on the lease") }}
+      {{ m.money("late_fee", "Late fee", help="Blank = no late fee") }}
+      {{ m.input("grace_days", "Days before rent counts as late", type="number", attrs='min="0" max="60"') }}
+      {{ m.date("billing_start", "Start billing rent from", help="Blank = from the move-in date, or from this month for tenants who moved in earlier") }}
+      {{ m.date("end_date", "Lease ends") }}
+      {{ m.textarea("notes", "Notes") }}
     </div>
-  </fieldset>
-  <fieldset><legend>Tenants</legend>
-    <p class="small muted" style="margin-top:0">Start typing to pick an existing tenant, or type a new person's full name to add them.</p>
-    {% for i in [1, 2, 3] %}
-    <div class="form-grid" style="margin-bottom:8px">
-      {{ m.input("tenant_" ~ i, "Tenant " ~ i, required=(i == 1), attrs='list="tenant-list" autocomplete="off"', placeholder="Last, First — or new name") }}
-      {{ m.select("role_" ~ i, "Role", roles) }}
-      {{ m.input("phone_" ~ i, "Phone (new tenant)") }}
-      {{ m.input("email_" ~ i, "Email (new tenant)", type="email") }}
-    </div>
-    {% endfor %}
-  </fieldset>
-  <fieldset><legend>Rent and deposit</legend>
-    <div class="form-grid">
-      {{ m.money("rent", "Monthly rent", required=True) }}
-      {{ m.input("rent_due_day", "Due day of month", type="number", required=True, attrs='min="1" max="28"') }}
-      {{ m.checkbox("prorate_partial_months", "Prorate partial months", values.get('prorate_partial_months')) }}
-      {{ m.money("deposit", "Security deposit (agreed)") }}
-      {{ m.money("deposit_received", "Deposit received now", help="Records the money as held") }}
-      {{ m.date("deposit_received_date", "Deposit received on", help="Defaults to the start date") }}
-    </div>
-  </fieldset>
-  <fieldset><legend>Late fees</legend>
-    <div class="form-grid">
-      {{ m.select("late_fee_type", "Late fee", fee_types) }}
-      {{ m.input("late_fee_grace_days", "Grace days", type="number", attrs='min="0" max="60"') }}
-      {{ m.money("late_fee_flat", "Flat fee amount") }}
-      {{ m.input("late_fee_percent", "Percent of rent", placeholder="5") }}
-      {{ m.money("late_fee_max", "Maximum fee (optional)") }}
-    </div>
-    <p class="small muted">Check your local law for limits on late fees and grace periods.</p>
-  </fieldset>
-  <div class="form-grid">{{ m.textarea("notes", "Notes") }}</div>
-  <div class="actions"><button class="btn primary">Create lease</button></div>
+  </details>
+  <div class="actions"><button class="btn primary">{{ 'Add tenant' if not person else 'Link' }}</button>
+    <a class="btn" href="{{ request.referrer or url_for('tenants.index') }}">Cancel</a></div>
 </form>
 {% endblock %}

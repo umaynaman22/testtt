@@ -13,9 +13,6 @@ REPORT_LINKS = {
     "unit": ("properties.unit_detail", "unit_id"),
     "lease": ("leases.detail", "lease_id"),
     "tenant": ("tenants.detail", "tid"),
-    "vendor": ("expenses.vendor_detail", "vendor_id"),
-    "expense": ("expenses.detail", "expense_id"),
-    "owner": ("properties.owner_edit", "owner_id"),
 }
 
 STATUS_CLASS = {"active": "ok", "month_to_month": "info", "future": "info", "draft": "muted",
@@ -68,6 +65,8 @@ def cell(row: dict, col) -> Markup:
         text, cls = fdate(v), "nowrap"
     elif col.kind == "pct":
         text, cls = pct(v), "num"
+    elif col.key == "unit_label":
+        text, cls = ("" if v in (None, "Main") else str(v)), ""
     elif col.kind == "int":
         text, cls = "" if v is None else f"{v:,}", "num"
     else:
@@ -79,6 +78,15 @@ def cell(row: dict, col) -> Markup:
         if target:
             html = Markup(f'<a href="{escape(url_for(endpoint, **{arg: target}))}">{html}</a>')
     return Markup(f'<td class="{cls}">{html}</td>')
+
+
+def place(code, unit_label) -> str:
+    """'12 Maple St' for single-unit properties, '12 Maple St · 2B' otherwise."""
+    if not code:
+        return ""
+    if not unit_label or unit_label == "Main":
+        return str(code)
+    return f"{code} · {unit_label}"
 
 
 def url_with(**changes) -> str:
@@ -97,4 +105,4 @@ def register(app: Flask) -> None:
     app.add_template_filter(label)
     app.add_template_filter(badge)
     app.add_template_filter(cents_to_input, "input_money")
-    app.jinja_env.globals.update(cell=cell, url_with=url_with)
+    app.jinja_env.globals.update(cell=cell, url_with=url_with, place=place)

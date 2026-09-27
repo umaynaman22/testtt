@@ -1,247 +1,158 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}{{ lease.property_code }} · {{ lease.unit_label }} lease{% endblock %}
+{% block title %}{{ names }}{% endblock %}
 {% block content %}
-{% set current = lease.status in ['active', 'month_to_month'] %}
 {% set s = summary %}
-{% call m.page_head(names or "(no tenants)", lease.property_code ~ " · unit " ~ lease.unit_label ~ " — " ~ lease.address_line1 ~ ", " ~ lease.city,
-      crumbs='<a href="' ~ url_for('leases.index') ~ '">Leases</a> / <a href="' ~ url_for('properties.detail', pid=lease.property_id) ~ '">' ~ lease.property_code ~ '</a> / <a href="' ~ url_for('properties.unit_detail', unit_id=lease.unit_id) ~ '">' ~ lease.unit_label ~ '</a>') %}
-  <a class="btn" href="{{ url_for('leases.statement', lease_id=lease.id) }}">Tenant statement</a>
-  <a class="btn" href="{{ url_for('leases.edit', lease_id=lease.id) }}">Edit terms</a>
-  {% if current %}<a class="btn primary" href="#pay">Record payment</a>{% endif %}
-  {{ m.delete_link('lease', lease.id, 'Delete lease') }}
+{% set current = lease.status in ['active', 'month_to_month', 'future', 'draft'] %}
+{% call m.page_head(names, place(lease.property_code, lease.unit_label),
+      crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a> / <a href="' ~ url_for('properties.detail', pid=lease.property_id) ~ '">' ~ lease.property_code ~ '</a>') %}
+  <a class="btn" href="{{ url_for('leases.edit', lease_id=lease.id) }}">Edit</a>
+  <a class="btn" href="{{ url_for('leases.statement', lease_id=lease.id) }}">Print statement</a>
+  {{ m.delete_link('lease', lease.id) }}
 {% endcall %}
-
-{% if lease.status == 'draft' %}
-<div class="flash info">This lease is a draft — nothing is billed until you mark it signed.
-  <form method="post" action="{{ url_for('leases.sign', lease_id=lease.id) }}" style="display:inline">{{ m.csrf() }}<button class="btn small primary">Mark signed</button></form>
-</div>
-{% elif lease.status == 'future' %}<div class="flash info">This lease starts {{ lease.start_date|fdate }}. It becomes active automatically on that day.</div>{% endif %}
-{% if renewal %}<div class="flash info">Renewed: <a href="{{ url_for('leases.detail', lease_id=renewal.id) }}">next term starting {{ renewal.start_date|fdate }}</a> ({{ renewal.status|label }}).</div>{% endif %}
-{% if prev %}<div class="flash info">This is a renewal of <a href="{{ url_for('leases.detail', lease_id=prev.id) }}">the lease that started {{ prev.start_date|fdate }}</a>.</div>{% endif %}
+{% if lease.status in ['ended', 'terminated'] %}<div class="flash info">Moved out {{ lease.move_out_date|fdate }}.</div>
+{% elif lease.status == 'future' %}<div class="flash info">Moves in {{ lease.start_date|fdate }}. Rent starts then.</div>{% endif %}
 
 <section class="kpis">
   <div class="kpi"><div class="label">Balance</div>
     <div class="value {{ 'neg' if s.balance > 0 else ('pos' if s.balance < 0) }}">{{ s.balance|money }}</div>
-    <div class="sub">{% if s.balance < 0 %}tenant has a credit{% elif s.aging.past_due %}{{ s.aging.past_due|money }} past due since {{ s.oldest_unpaid_due|fdate }}{% elif s.balance > 0 %}not yet due{% else %}paid up{% endif %}</div></div>
+    <div class="sub">{% if s.balance < 0 %}paid ahead (credit){% elif s.aging.past_due %}<strong class="neg">{{ s.aging.past_due|money }} late</strong> since {{ s.oldest_unpaid_due|fdate }}{% elif s.balance > 0 %}not late yet{% else %}paid up{% endif %}</div></div>
   <div class="kpi"><div class="label">Rent</div><div class="value">{{ lease.current_rent_cents|money }}</div>
-    <div class="sub">due on day {{ lease.rent_due_day }}{% if lease.late_fee_type != 'none' %} · late after {{ lease.late_fee_grace_days }} days{% endif %}</div></div>
-  <div class="kpi"><div class="label">Term</div><div class="value" style="font-size:1.05rem">{{ lease.start_date|fdate }} – {{ lease.end_date|fdate if lease.end_date else 'open' }}</div>
-    <div class="sub">{{ lease.status|badge }}{% if lease.notice_given_date %} <span class="badge warn">Notice given {{ lease.notice_given_date|fdate }}</span>{% endif %}{% if lease.move_out_date %} · moved out {{ lease.move_out_date|fdate }}{% endif %}</div></div>
-  <div class="kpi"><div class="label">Deposit held</div><div class="value">{{ s.deposit_held|money }}</div>
-    <div class="sub">agreed {{ lease.deposit_cents|money }}</div></div>
+    <div class="sub">due on day {{ lease.rent_due_day }}{% if lease.late_fee_type == 'flat' %} · {{ lease.late_fee_flat_cents|money }} late fee after {{ lease.late_fee_grace_days }} days{% endif %}</div></div>
+  <div class="kpi"><div class="label">Last payment</div>
+    {% if last_payment %}<div class="value">{{ last_payment.credit|money }}</div><div class="sub">{{ last_payment.date|fdate }}</div>
+    {% else %}<div class="value muted">—</div><div class="sub">none yet</div>{% endif %}</div>
+  {% if s.deposit_held %}<div class="kpi"><div class="label">Deposit held</div><div class="value">{{ s.deposit_held|money }}</div></div>{% endif %}
 </section>
 
 <div class="split">
   <div>
-    <div class="card" id="ledger">
-      <h2>Ledger <span class="side muted">voided lines are crossed out and don't count</span></h2>
+    <div class="card" id="pay">
+      <h2>Record a payment</h2>
+      <form method="post" action="{{ url_for('leases.payment', lease_id=lease.id) }}">
+        {{ m.csrf() }}
+        <div class="form-grid">
+          {{ m.money("amount", "Amount", value=(s.balance|input_money if s.balance > 0 else '')) }}
+          {{ m.date("received_date", "Date", value=today.isoformat()) }}
+          {{ m.select("method", "How they paid", methods, blank="—", value="") }}
+          {{ m.input("reference", "Check # / note", value="") }}
+        </div>
+        <div class="actions"><button class="btn primary">Save payment</button>
+          <label class="small" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" name="print_receipt" value="1"> print a receipt</label></div>
+      </form>
+    </div>
+
+    <div class="card" id="history">
+      <h2>Payment history <span class="side muted">newest first</span></h2>
       {% if entries %}
       <div class="table-wrap"><table>
-        <thead><tr><th>Date</th><th>Description</th><th class="num">Charge</th><th class="num">Paid / credit</th><th class="num">Balance</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>What</th><th class="num">Charged</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead>
         <tbody>
         {% for e in entries %}
           <tr class="{{ 'voided' if e.voided_at }}">
             <td class="nowrap">{{ e.date|fdate }}</td>
-            <td>{{ e.description }}{% if e.voided_at %}<div class="small keep">Voided: {{ e.void_reason }}</div>{% endif %}
-              {% if e.kind == 'payment' and e.notes %}<div class="small muted">{{ e.notes }}</div>{% endif %}</td>
+            <td>{{ e.description }}{% if e.voided_at %} <span class="small keep">(voided: {{ e.void_reason }})</span>{% endif %}</td>
             <td class="num">{{ e.charge|money(true) }}</td>
-            <td class="num">{{ e.credit|money(true) }}</td>
+            <td class="num {{ 'pos' if e.kind == 'payment' }}">{{ e.credit|money(true) }}</td>
             <td class="num keep">{{ e.balance|money }}</td>
             <td class="actions keep"><div class="row-actions">
-              {% if e.kind == 'payment' %}<a class="btn small" href="{{ url_for('rentday.receipt', payment_id=e.id) }}">Receipt</a>{% endif %}
-              {% if not e.voided_at %}
-                {% if e.kind == 'payment' and e.type != 'deposit_applied' %}{{ m.void_form(url_for('leases.void_payment', lease_id=lease.id, payment_id=e.id), 'payment', nsf=(e.type == 'check')) }}
-                {% elif e.kind == 'charge' %}{{ m.void_form(url_for('leases.void_charge', lease_id=lease.id, charge_id=e.id), 'charge') }}{% endif %}
-              {% endif %}
               {% if e.kind == 'payment' %}
-                {{ m.delete_button(url_for('leases.delete_payment', lease_id=lease.id, payment_id=e.id),
-                   "Delete this payment? It disappears from the ledger. Use Void instead to keep a crossed-out record.") }}
-              {% elif e.source == 'auto' and e.type != 'late_fee' %}
-                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id),
-                   "Delete this charge? Automatic rent and add-ons are billed again with the current terms (handy after fixing the rent). To cancel a month for good, use Void.") }}
+                <a class="btn small" href="{{ url_for('rentday.receipt', payment_id=e.id) }}">Receipt</a>
+                {{ m.delete_button(url_for('leases.delete_payment', lease_id=lease.id, payment_id=e.id), "Delete this payment?") }}
+              {% elif e.source == 'auto' and e.type == 'rent' %}
+                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id), "Delete this rent charge? It will be billed again with the current rent. To skip this month's rent, add a credit instead.") }}
               {% else %}
-                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id),
-                   "Delete this " ~ ("credit" if e.credit else "charge") ~ "? It disappears from the ledger. Use Void instead to keep a crossed-out record.") }}
+                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id), "Delete this line?") }}
               {% endif %}
             </div></td>
           </tr>
         {% endfor %}
         </tbody></table></div>
-      {% else %}<p class="muted">Nothing billed yet.{% if lease.status == 'future' %} Rent starts on {{ lease.start_date|fdate }}.{% endif %}</p>{% endif %}
-    </div>
-
-    <div class="card" id="pay">
-      <h2>Record payment</h2>
-      <form method="post" action="{{ url_for('leases.payment', lease_id=lease.id) }}">
-        {{ m.csrf() }}
-        <div class="form-grid">
-          {{ m.money("amount", "Amount", required=True, value=(s.balance|input_money if s.balance > 0 else '')) }}
-          {{ m.date("received_date", "Date received", required=True, value=today.isoformat()) }}
-          {{ m.select("method", "Method", methods, value="check") }}
-          {{ m.input("reference", "Check # / reference") }}
-          {{ m.input("notes", "Note", wide=True) }}
-          {{ m.checkbox("print_receipt", "Open receipt after saving") }}
-        </div>
-        <div class="actions"><button class="btn primary">Save payment</button></div>
-      </form>
-      <details class="section" id="charge-form"><summary>Add a charge (utility bill-back, damage, fee…)</summary>
-        <form method="post" action="{{ url_for('leases.charge', lease_id=lease.id) }}">
-          {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.select("charge_type", "Type", charge_types, value="utility") }}
-            {{ m.money("amount", "Amount", required=True, value="") }}
-            {{ m.date("due_date", "Due date", required=True, value=today.isoformat()) }}
-            {{ m.input("description", "Description", wide=True, value="") }}
-          </div>
-          <div class="actions"><button class="btn">Add charge</button></div>
-        </form>
-      </details>
-      <details class="section" id="credit-form"><summary>Add a credit or concession</summary>
-        <form method="post" action="{{ url_for('leases.credit', lease_id=lease.id) }}">
-          {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.money("amount", "Amount", required=True, value="") }}
-            {{ m.date("date", "Date", required=True, value=today.isoformat()) }}
-            {{ m.input("description", "Reason", wide=True, required=True, value="", placeholder="e.g. Concession: 2 weeks without hot water") }}
-          </div>
-          <div class="actions"><button class="btn">Add credit</button></div>
-        </form>
-      </details>
-    </div>
-
-    <div class="card" id="deposit">
-      <h2>Security deposit <span class="side">held {{ s.deposit_held|money }}</span></h2>
-      {% if deposits %}<div class="table-wrap"><table><tbody>
-        {% for d in deposits %}<tr class="{{ 'voided' if d.voided_at }}">
-          <td class="nowrap">{{ d.txn_date|fdate }}</td><td>{{ d.txn_type|label }}{% if d.description %} — {{ d.description }}{% endif %}
-            {% if d.voided_at %}<div class="small keep">Voided: {{ d.void_reason }}</div>{% endif %}</td>
-          <td class="num">{{ ('' if d.txn_type in ['received', 'interest'] else '−') ~ (d.amount_cents|money) }}</td>
-          <td class="actions keep"><div class="row-actions">{% if not d.voided_at %}{{ m.void_form(url_for('leases.void_deposit', lease_id=lease.id, txn_id=d.id), 'entry') }}{% endif %}
-            {{ m.delete_button(url_for('leases.delete_deposit', lease_id=lease.id, txn_id=d.id), "Delete this deposit entry?") }}</div></td></tr>{% endfor %}
-      </tbody></table></div>{% endif %}
-      {% if lease.status in ['ended', 'terminated'] and s.deposit_held > 0 %}
-        <p class="note">Moved out {{ lease.move_out_date|fdate }}. Settle the deposit within {{ deposit_days }} days: record deductions (itemized), apply any to unpaid rent, then refund the rest.</p>
-      {% endif %}
-      <form method="post" action="{{ url_for('leases.deposit', lease_id=lease.id) }}">
-        {{ m.csrf() }}
-        <div class="form-grid">
-          {{ m.select("txn_type", "Type", deposit_types, value=('received' if s.deposit_held == 0 else 'deduction')) }}
-          {{ m.money("amount", "Amount", required=True, value="") }}
-          {{ m.date("date", "Date", required=True, value=today.isoformat()) }}
-          {{ m.input("description", "Description", wide=True, value="", placeholder="Itemize deductions, e.g. Carpet cleaning bedroom 2") }}
-        </div>
-        <div class="actions"><button class="btn">Save deposit entry</button></div>
-      </form>
+      {% else %}<p class="muted">Nothing yet. Rent is billed automatically on the due day.</p>{% endif %}
     </div>
   </div>
 
   <div>
     <div class="card">
-      <h2>Tenants</h2>
-      <ul style="padding-left:18px;margin:0">
-        {% for t in tenants %}<li><a href="{{ url_for('tenants.detail', tid=t.id) }}">{{ t.first_name }} {{ t.last_name }}</a>
-          <span class="muted small">· {{ t.role|label }}{% if t.phone %} · {{ t.phone }}{% endif %}</span>
-          {% if tenants|length > 1 %}<form method="post" action="{{ url_for('leases.remove_tenant', lease_id=lease.id, tid=t.id) }}" style="display:inline" data-confirm="Remove {{ t.first_name }} from this lease?">{{ m.csrf() }}<button class="btn link small">remove from lease</button></form>{% endif %}</li>{% endfor %}
-      </ul>
-      <details class="section"><summary>Add a person</summary>
-        <datalist id="tenant-list">{% for t in tenant_opts %}<option value="{{ t }}">{% endfor %}</datalist>
-        <form method="post" action="{{ url_for('leases.add_tenant', lease_id=lease.id) }}">
+      <h2>{{ 'People' if people|length > 1 else 'Contact' }} <a class="side" href="{{ url_for('leases.edit', lease_id=lease.id) }}">Edit</a></h2>
+      {% for t in people %}
+        <p style="margin:0 0 8px"><strong>{{ t.first_name }} {{ t.last_name }}</strong>
+          {% if t.phone %}<br><span class="small">{{ t.phone }}</span>{% endif %}
+          {% if t.email %}<br><a class="small" href="mailto:{{ t.email }}">{{ t.email }}</a>{% endif %}
+          {% if people|length > 1 %}<br>{{ m.delete_button(url_for('leases.remove_person', lease_id=lease.id, tid=t.id), "Remove " ~ t.first_name ~ " from here?", label="remove", cls="btn link small") }}{% endif %}</p>
+      {% endfor %}
+      <details class="section"><summary>Add another person</summary>
+        <form method="post" action="{{ url_for('leases.add_person', lease_id=lease.id) }}">
           {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.input("tenant", "Name", required=True, attrs='list="tenant-list" autocomplete="off"', value="") }}
-            {{ m.select("role", "Role", roles, value="co_tenant") }}
-            {{ m.input("phone", "Phone (new)", value="") }}
-          </div>
+          <div class="form-grid">{{ m.input("name", "Name", value="") }}{{ m.input("phone", "Phone", value="") }}</div>
           <div class="actions"><button class="btn small">Add</button></div>
         </form>
       </details>
+      {% if lease.notes %}<p class="small muted" style="white-space:pre-wrap">{{ lease.notes }}</p>{% endif %}
     </div>
 
-    {% if current %}
-    <div class="card">
-      <h2>Lease actions</h2>
-      <details class="section"><summary>Renew</summary>
-        <form method="post" action="{{ url_for('leases.renew', lease_id=lease.id) }}">
+    <div class="card" id="more">
+      <h2>More</h2>
+      <details class="section"><summary>Add a charge (repair, utility bill…)</summary>
+        <form method="post" action="{{ url_for('leases.charge', lease_id=lease.id) }}">
           {{ m.csrf() }}
           <div class="form-grid">
-            {{ m.date("start_date", "New term starts", required=True, value=renew_start) }}
-            {{ m.date("end_date", "New term ends", value=renew_end) }}
-            {{ m.money("rent", "Rent", required=True, value=lease.current_rent_cents|input_money) }}
+            {{ m.money("amount", "Amount", value="") }}
+            {{ m.date("due_date", "Date", value=today.isoformat()) }}
+            {{ m.input("description", "What for", wide=True, value="") }}
           </div>
-          <p class="small muted">Tenants, terms, add-ons and the deposit carry over to the new term.</p>
-          <div class="actions"><button class="btn">Create renewal</button></div>
+          <div class="actions"><button class="btn small">Add charge</button></div>
         </form>
       </details>
-      <details class="section"><summary>Tenant gave notice</summary>
-        <form method="post" action="{{ url_for('leases.notice', lease_id=lease.id) }}">
+      <details class="section"><summary>Give a credit or discount</summary>
+        <form method="post" action="{{ url_for('leases.credit', lease_id=lease.id) }}">
           {{ m.csrf() }}
           <div class="form-grid">
-            {{ m.date("notice_date", "Notice received", required=True, value=today.isoformat()) }}
-            {{ m.date("move_out_date", "Moving out on", required=True, value="") }}
+            {{ m.money("amount", "Amount", value="") }}
+            {{ m.date("date", "Date", value=today.isoformat()) }}
+            {{ m.input("description", "Reason", wide=True, value="") }}
           </div>
-          <div class="actions"><button class="btn">Save notice</button></div>
+          <div class="actions"><button class="btn small">Add credit</button></div>
         </form>
       </details>
-      <details class="section"><summary>Record move-out</summary>
-        <form method="post" action="{{ url_for('leases.move_out', lease_id=lease.id) }}" data-confirm="Record the move-out? Rent billed after this date will be credited back.">
-          {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.date("move_out_date", "Move-out date", required=True, value=(lease.end_date if lease.notice_given_date else today.isoformat())) }}
-            {{ m.select("status", "How it ended", [('ended', 'Normal move-out'), ('terminated', 'Early termination / eviction')]) }}
-            {{ m.input("reason", "Note", wide=True, value="") }}
-          </div>
-          <div class="actions"><button class="btn danger">Record move-out</button></div>
-        </form>
-      </details>
-    </div>
-    {% endif %}
-
-    <div class="card" id="terms">
-      <h2>Terms</h2>
-      <dl class="kv small">
-        <dt>Starting rent</dt><dd>{{ lease.rent_cents|money }}</dd>
-        <dt>Due day</dt><dd>{{ lease.rent_due_day }}{% if lease.prorate_partial_months %} · partial months prorated{% endif %}</dd>
-        <dt>Late fee</dt><dd>{% if lease.late_fee_type == 'flat' %}{{ lease.late_fee_flat_cents|money }}{% elif lease.late_fee_type == 'percent' %}{{ (lease.late_fee_percent_bp / 100)|round(2) }}% of rent{% else %}none{% endif %}
-          {% if lease.late_fee_type != 'none' %} after {{ lease.late_fee_grace_days }} grace days{% if lease.late_fee_max_cents %}, max {{ lease.late_fee_max_cents|money }}{% endif %}{% endif %}</dd>
-        {% if lease.move_in_date %}<dt>Moved in</dt><dd>{{ lease.move_in_date|fdate }}</dd>{% endif %}
-        {% if lease.billing_start_date %}<dt>Billing starts</dt><dd>{{ lease.billing_start_date|fdate }}</dd>{% endif %}
-        {% if lease.notes %}<dt>Notes</dt><dd style="white-space:pre-wrap">{{ lease.notes }}</dd>{% endif %}
-      </dl>
-      <h3>Rent changes</h3>
-      {% if changes %}<ul class="small" style="padding-left:18px">{% for c in changes %}<li>{{ c.effective_date|fdate }}: {{ c.rent_cents|money }}{% if c.notice_sent_date %} <span class="muted">(notice sent {{ c.notice_sent_date|fdate }})</span>{% endif %}{% if c.reason %} — {{ c.reason }}{% endif %}
-        {{ m.delete_button(url_for('leases.delete_rent_change', lease_id=lease.id, change_id=c.id), "Delete this rent change? Rent already billed is not changed.", label="delete", cls="btn link small") }}</li>{% endfor %}</ul>{% else %}<p class="small muted">None.</p>{% endif %}
-      <details class="section"><summary>Add rent change</summary>
+      <details class="section"><summary>Change the rent</summary>
         <form method="post" action="{{ url_for('leases.rent_change', lease_id=lease.id) }}">
           {{ m.csrf() }}
           <div class="form-grid">
-            {{ m.date("effective_date", "Effective", required=True, value="") }}
-            {{ m.money("rent", "New rent", required=True, value="") }}
-            {{ m.date("notice_sent_date", "Notice sent", value="") }}
-            {{ m.input("reason", "Reason", value="") }}
+            {{ m.money("rent", "New rent", value="") }}
+            {{ m.date("effective_date", "Starting", value="", help="Blank = next rent bill") }}
+          </div>
+          <div class="actions"><button class="btn small">Change rent</button></div>
+        </form>
+        {% if changes %}<ul class="small" style="padding-left:18px">{% for c in changes %}<li>{{ c.rent_cents|money }} from {{ c.effective_date|fdate }}
+          {{ m.delete_button(url_for('leases.delete_rent_change', lease_id=lease.id, change_id=c.id), "Delete this rent change? Rent already billed stays the same.", label="delete", cls="btn link small") }}</li>{% endfor %}</ul>{% endif %}
+      </details>
+      <details class="section" id="deposit" {{ 'open' if deposits }}><summary>Security deposit{% if s.deposit_held %}: {{ s.deposit_held|money }} held{% endif %}</summary>
+        {% if deposits %}<table class="compact"><tbody>{% for d in deposits %}<tr class="{{ 'voided' if d.voided_at }}">
+          <td class="nowrap small">{{ d.txn_date|fdate }}</td><td class="small">{{ {'received': 'Received', 'interest': 'Interest', 'deduction': 'Kept', 'refund': 'Returned', 'applied_to_balance': 'Used for rent owed'}[d.txn_type] }}{% if d.description and d.description != 'Security deposit' %} — {{ d.description }}{% endif %}</td>
+          <td class="num small">{{ ('' if d.txn_type in ['received', 'interest'] else '−') ~ (d.amount_cents|money) }}</td>
+          <td class="actions keep">{{ m.delete_button(url_for('leases.delete_deposit', lease_id=lease.id, txn_id=d.id), "Delete this deposit entry?", label="delete", cls="btn link small") }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+        <form method="post" action="{{ url_for('leases.deposit', lease_id=lease.id) }}">
+          {{ m.csrf() }}
+          <div class="form-grid">
+            {{ m.select("txn_type", "What happened", deposit_types, value=('received' if not s.deposit_held else 'refund')) }}
+            {{ m.money("amount", "Amount", value="") }}
+            {{ m.date("date", "Date", value=today.isoformat()) }}
+            {{ m.input("description", "Note", value="") }}
           </div>
           <div class="actions"><button class="btn small">Save</button></div>
         </form>
       </details>
-      <h3>Recurring add-ons</h3>
-      {% if recurring %}<ul class="small" style="padding-left:18px">{% for r in recurring %}<li>{{ r.description }}: {{ r.amount_cents|money }}/mo from {{ r.start_date|fdate }}{% if r.end_date %} to {{ r.end_date|fdate }}{% else %}
-          <form method="post" action="{{ url_for('leases.end_recurring', lease_id=lease.id, rc_id=r.id) }}" style="display:inline-flex;gap:4px">{{ m.csrf() }}<input type="date" name="end_date" required aria-label="End date"><button class="btn small">End</button></form>{% endif %}
-          {{ m.delete_button(url_for('leases.delete_recurring', lease_id=lease.id, rc_id=r.id), "Delete this add-on? Months already billed stay on the ledger; use End instead to stop it from a date.", label="delete", cls="btn link small") }}</li>{% endfor %}</ul>{% else %}<p class="small muted">None.</p>{% endif %}
-      <details class="section"><summary>Add recurring charge</summary>
-        <form method="post" action="{{ url_for('leases.recurring', lease_id=lease.id) }}">
+      {% if current %}
+      <details class="section"><summary>Moved out</summary>
+        <form method="post" action="{{ url_for('leases.move_out', lease_id=lease.id) }}" data-confirm="Mark as moved out? Rent billed after that day is taken off; their history is kept.">
           {{ m.csrf() }}
-          <div class="form-grid">
-            {{ m.select("charge_type", "Type", recurring_types, value="pet_rent") }}
-            {{ m.input("description", "Description", required=True, value="", placeholder="Pet rent — 1 dog") }}
-            {{ m.money("amount", "Monthly amount", required=True, value="") }}
-            {{ m.date("start_date", "Starts", required=True, value=today.isoformat()) }}
-            {{ m.date("end_date", "Ends", value="") }}
-          </div>
-          <div class="actions"><button class="btn small">Add</button></div>
+          <div class="form-grid">{{ m.date("move_out_date", "Moved out on", value=today.isoformat()) }}</div>
+          <div class="actions"><button class="btn small">Mark moved out</button></div>
         </form>
       </details>
+      {% endif %}
     </div>
-    {{ m.docs(docs, "lease", lease.id) }}
   </div>
 </div>
 {% endblock %}

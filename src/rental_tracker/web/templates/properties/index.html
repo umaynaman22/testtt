@@ -2,48 +2,36 @@
 {% import "_macros.html" as m with context %}
 {% block title %}Properties{% endblock %}
 {% block content %}
-{% call m.page_head("Properties", rows|length ~ " shown · " ~ totals.units ~ " units · " ~ totals.occupied ~ " occupied") %}
-  <a class="btn" href="{{ url_with(format='csv') }}">Export CSV</a>
+{% call m.page_head("Properties", rows|length ~ " properties · " ~ totals.occupied ~ " of " ~ totals.units ~ " units rented") %}
   <a class="btn primary" href="{{ url_for('properties.new') }}">Add property</a>
 {% endcall %}
 <form class="filters" method="get">
-  <label class="field"><span>Search</span><input name="q" value="{{ request.args.get('q', '') }}" placeholder="Code, name, street"></label>
-  <label class="field"><span>Tag</span><select name="tag"><option value="">All tags</option>
-    {% for t in tags %}<option value="{{ t.id }}" {{ 'selected' if request.args.get('tag') == t.id|string }}>{{ t.name }} ({{ t.n }})</option>{% endfor %}</select></label>
-  <label class="field"><span>Owner</span><select name="owner"><option value="">All owners</option>
-    {% for o in owners %}<option value="{{ o.id }}" {{ 'selected' if request.args.get('owner') == o.id|string }}>{{ o.name }}</option>{% endfor %}</select></label>
-  <label class="field"><span>City</span><select name="city"><option value="">All cities</option>
-    {% for c in cities %}<option {{ 'selected' if request.args.get('city') == c }}>{{ c }}</option>{% endfor %}</select></label>
-  <label class="field"><span>Status</span><select name="status">
-    {% for s in ['active', 'sold', 'archived', 'all'] %}<option value="{{ s }}" {{ 'selected' if request.args.get('status', 'active') == s }}>{{ s|label }}</option>{% endfor %}</select></label>
+  <label class="field"><span>Search</span><input name="q" value="{{ request.args.get('q', '') }}" placeholder="Name or street"></label>
   <label class="field"><span>Sort</span><select name="sort">
-    {% for k, t in [('code','Code'),('name','Name'),('city','City'),('occupancy','Lowest occupancy'),('balance','Highest balance')] %}
-    <option value="{{ k }}" {{ 'selected' if request.args.get('sort', 'code') == k }}>{{ t }}</option>{% endfor %}</select></label>
-  <label class="field check"><input type="checkbox" name="vacant" value="1" {{ 'checked' if request.args.get('vacant') }}><span>Has vacancy</span></label>
+    {% for k, t in [('name','Name'),('city','City'),('occupancy','Most vacant first'),('balance','Most owed first')] %}
+    <option value="{{ k }}" {{ 'selected' if request.args.get('sort', 'name') == k }}>{{ t }}</option>{% endfor %}</select></label>
+  <label class="field check"><input type="checkbox" name="vacant" value="1" {{ 'checked' if request.args.get('vacant') }}><span>Has a vacancy</span></label>
   <button class="btn">Filter</button>
   {% if request.args %}<a class="btn link" href="{{ url_for('properties.index') }}">Clear</a>{% endif %}
 </form>
 {% if rows %}
 <div class="table-wrap"><table>
-  <thead><tr><th>Code</th><th>Name / address</th><th>City</th><th>Owner</th><th>Tags</th><th class="num">Units</th><th class="num">Occupied</th><th class="num">Rent / mo</th><th class="num">Balance owed</th></tr></thead>
+  <thead><tr><th>Property</th><th>City</th><th class="num">Units</th><th class="num">Rented</th><th class="num">Rent / month</th><th class="num">Owed</th></tr></thead>
   <tbody>
   {% for p in rows %}
     <tr>
-      <td class="nowrap"><a href="{{ url_for('properties.detail', pid=p.id) }}"><strong>{{ p.code }}</strong></a> {% if p.status != 'active' %}{{ p.status|badge }}{% endif %}</td>
-      <td>{{ p.name }}{% if p.name != p.address_line1 %}<div class="muted small">{{ p.address_line1 }}</div>{% endif %}</td>
-      <td class="nowrap">{{ p.city }}, {{ p.state }}</td>
-      <td class="small">{{ p.owner_name }}</td>
-      <td class="small muted">{{ p.tags or '' }}</td>
+      <td><a href="{{ url_for('properties.detail', pid=p.id) }}"><strong>{{ p.name }}</strong></a></td>
+      <td>{{ p.city }}{% if p.city and p.state %}, {% endif %}{{ p.state }}</td>
       <td class="num">{{ p.units }}</td>
-      <td class="num">{% if p.units %}{{ p.occupied }}{% if p.occupied < p.units %} <span class="badge warn">{{ p.units - p.occupied }} vacant</span>{% endif %}{% endif %}</td>
+      <td class="num">{{ p.occupied }}{% if p.occupied < p.units %} <span class="badge warn">{{ p.units - p.occupied }} vacant</span>{% endif %}</td>
       <td class="num">{{ p.rent_cents|money }}</td>
       <td class="num {{ 'neg' if p.balance_cents > 0 }}">{{ p.balance_cents|money(true) }}</td>
     </tr>
   {% endfor %}
   </tbody>
-  <tfoot><tr class="total"><td colspan="5">Total</td><td class="num">{{ totals.units }}</td><td class="num">{{ totals.occupied }}</td><td class="num">{{ totals.rent|money }}</td><td class="num">{{ totals.balance|money }}</td></tr></tfoot>
+  <tfoot><tr class="total"><td colspan="2">Total</td><td class="num">{{ totals.units }}</td><td class="num">{{ totals.occupied }}</td><td class="num">{{ totals.rent|money }}</td><td class="num">{{ totals.balance|money }}</td></tr></tfoot>
 </table></div>
 {% else %}
-<div class="card empty">No properties match. <a href="{{ url_for('properties.new') }}">Add one</a> or <a href="{{ url_for('admin.import_page') }}">import from a spreadsheet</a>.</div>
+<div class="card empty">No properties yet. <a href="{{ url_for('properties.new') }}">Add your first property</a>.</div>
 {% endif %}
 {% endblock %}

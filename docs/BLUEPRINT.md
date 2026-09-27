@@ -4,7 +4,7 @@ This plan is for a desktop app that runs entirely on your own computer. It needs
 
 The database design lives in [`0001_initial.sql`](../src/rental_tracker/db/migrations/0001_initial.sql). It is the app's first migration, so the app and this document share one schema.
 
-**Status:** the core app (phases 0–3 of the roadmap) is built and tested. See [§18](#18-build-status) for what exists today and what is still planned, and the [README](../README.md) to run it.
+**Status:** a simplified version of this design is built: properties, tenants, automatic rent, payments, balances and late tracking, with every field optional. See [§18](#18-build-status) for exactly what the app includes, and the [README](../README.md) to run it. The rest of this document is the full design, kept for reference.
 
 ---
 
@@ -676,26 +676,27 @@ Each phase ends with something usable, and the phases are built in order.
 
 ## 18. Build status
 
-The app in this repository implements phases 0–3 of the roadmap, plus parts of phase 4. Run it with the demo data to try everything (see the README).
+At the owner's request the app was **simplified to the essentials**: add a property, add a tenant to it, and track payments, balances and late rent. Every form field is optional; blanks get sensible defaults (e.g. "Property 1", move-in today, no late fee).
 
-**Built and tested**
+**In the app**
 
-- **Foundation:** data folder, SQLite with versioned migrations, automatic backup before upgrades, integrity check on start, one copy per data folder, a desktop window (pywebview) or browser, and a local-only web server with a launch token, host check and CSRF protection.
-- **Backups:** daily, weekly and monthly rotation, a backup on exit, before imports and before restores, a copy to an external drive with an incremental documents copy, and one-click restore with a safety copy.
-- **Records:** owners, properties, units, tags, tenants and leases. Lease lifecycle covers draft, future, active, month-to-month, notice, move-out with prorated credit, and renewal with the deposit carried over. Also rent changes, recurring add-ons, co-tenants, documents on any record, global search and the audit log.
-- **Money:** automatic rent and add-on billing (idempotent, prorated, lookahead, billing start for imports), charges, credits, payments and receipts, voids with required reasons, bounced checks with an NSF fee, the security deposit ledger (received, deductions, refunds, applied to balance), and the books lock.
-- **Rent Day:** a keyboard-driven grid (Enter saves the row and moves to the next), filters, a typo guard, and "Bill rent now".
-- **Late fees:** a review queue with bulk approve or waive, or automatic mode, using flat or percent fees with caps and grace days.
-- **Expenses:** quick entry that remembers your last choices, receipt upload, vendors created on the fly, and capital vs repair categories mapped to tax lines.
-- **Reports:** rent roll, aging, monthly collections, P&L (cash or accrual), Schedule E, expense detail, vacancy, lease expirations, deposit register, rent vs market, property performance and 1099. All can be filtered by property, tag or owner, printed, and exported to CSV.
-- **Deleting:** Delete buttons on every record and entry, with confirmation, audit copies, safety backups and books-lock checks (§7.6).
-- **Dashboard:** collection, past-due, occupancy, expiring leases and deposits held, plus a "needs attention" list covering late fees, deposit deadlines, overdue move-outs, new leases starting, expiring documents and vendor insurance, and backup health.
-- **Bulk import:** 7 CSV templates, a dry run that saves nothing, per-row errors with spreadsheet row numbers, and an all-or-nothing commit taken after a backup.
+- **Screens:** Dashboard · Properties · Tenants · Collect rent · Payments · Late · Reports · Settings, plus global search and a Quit button.
+- **Properties:** add, edit and delete properties, with optional units (type "4" or "A, B, C").
+- **Tenants:** add a tenant to a property (or without one, and link them later), with optional co-tenants.
+- **Tenant page:** balance, whether and how long they're late, last payment, payment history, and recording or deleting payments. From there you can also add a charge or credit, change the rent, track the security deposit, mark them moved out, and print a statement.
+- **Rent billing:** automatic (prorated partial months). For tenants who moved in before they were added, billing starts from the current month, and anything they owed before goes in "Already owes".
+- **Collect rent:** a keyboard-driven grid for entering everyone's payments.
+- **Late:** who is behind, by how many days and how much; optional late fees that you charge or skip.
+- **Reports:** rent roll, who owes money, monthly collections, vacant units, security deposits. All printable and exportable to CSV.
+- **Settings:** your name for receipts, default late fee and grace days, when to bill rent, proration method.
+- **Delete:** on everything, with a confirmation page for properties, units and tenants.
 
-**Not built yet**
+**Kept in the background, without screens**
 
-- **Phase 4:** work orders, inspections, letter templates and batch letters, the communication log, and recurring expenses.
-- **Phase 5:** bank import and reconciliation, loans and amortization UI (the P&L already reads `loan_payments`), insurance policies UI, depreciation, owner statements and mileage log UI.
-- **Phase 6:** password lock, SQLCipher, multi-user office mode, and an encrypted off-site backup archive.
+- Daily, exit and before-delete backups, in the `backups` folder.
+- The audit log of every change.
+- The books lock and payment application rules described above.
 
-**Windows packaging (built):** GitHub Actions builds a per-user installer (Inno Setup) and a portable single-file `.exe` (PyInstaller) on every push. The build runs the tests on Windows, self-tests both builds (bundled files, SQLite FTS5, the WebView2 app window), and smoke-tests the installed app with demo data. See `packaging/` and `.github/workflows/windows-build.yml`.
+**Removed from the app:** owners, expenses and vendors (and the P&L, Schedule E, 1099 and performance reports that depend on them), CSV import, the Backups and Audit log pages, documents, tags, and voiding. The database still has the tables, so any of these can be brought back later.
+
+**Windows packaging:** GitHub Actions builds a per-user installer (Inno Setup) and a portable single-file `.exe` (PyInstaller) on every push. The build runs the tests on Windows, self-tests both builds, smoke-tests the app with demo data, and opens the real app window. See `packaging/` and `.github/workflows/windows-build.yml`.

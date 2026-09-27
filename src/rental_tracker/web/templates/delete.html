@@ -11,18 +11,10 @@
   {% else %}
     <h2>This permanently removes</h2>
     <ul>{% for r in p.removes %}<li>{{ r }}</li>{% endfor %}</ul>
-    {% if p.keeps %}<h3>Kept</h3><ul>{% for k in p.keeps %}<li>{{ k }}</li>{% endfor %}</ul>{% endif %}
+    {% if p.keeps %}<ul class="muted">{% for k in p.keeps %}<li>{{ k }}</li>{% endfor %}</ul>{% endif %}
     {% for w in p.warnings %}<p class="note">{{ w }}</p>{% endfor %}
-    <p class="small muted">A backup is saved automatically just before deleting, so you can get everything back from the Backups page if you change your mind.</p>
     <form method="post">
       {{ m.csrf() }}
-      {% if p.move_choices %}
-        {{ m.select("move_to", "Move its expenses to", p.move_choices, required=True, blank="Choose a category…", value="") }}
-      {% endif %}
-      {% if p.needs_typed_confirm %}
-        <label class="field" style="max-width:260px;margin-top:10px"><span>Type {{ confirm_word }} to confirm <em>*</em></span>
-          <input name="confirm" required autocomplete="off" autofocus pattern="[Dd][Ee][Ll][Ee][Tt][Ee]" placeholder="{{ confirm_word }}"></label>
-      {% endif %}
       <div class="actions">
         <button class="btn primary" style="background:var(--bad);border-color:var(--bad)">Delete</button>
         <a class="btn" href="{{ cancel_url }}">Cancel</a>

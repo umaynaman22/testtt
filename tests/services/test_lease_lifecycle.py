@@ -55,7 +55,7 @@ def test_second_active_lease_rejected(conn, owner_id):
     lid = make_lease(conn, owner_id)
     unit_id = ledger.lease_row(conn, lid)["unit_id"]
     tid = conn.execute("SELECT tenant_id FROM lease_tenants").fetchone()[0]
-    with pytest.raises(ServiceError, match="already has a current lease"):
+    with pytest.raises(ServiceError, match="Someone already lives there"):
         leases.create_lease(conn, unit_id=unit_id, tenants=[(tid, "primary")], start="2026-02-01", end=None,
                             rent_cents=1, today=date(2026, 3, 1))
 

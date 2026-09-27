@@ -25,25 +25,14 @@
     <input id="global-search" name="q" placeholder="Search  (Ctrl+K)" aria-label="Search" value="{{ request.args.get('q', '') if request.endpoint == 'main.search' else '' }}">
   </form>
   <nav aria-label="Main">
-    <div class="nav-group">Daily</div>
     {{ nav('main.dashboard', 'Dashboard') }}
-    {{ nav('rentday.index', 'Rent Day', ['rentday.index', 'rentday.pay']) }}
-    {{ nav('rentday.late_fees', 'Late fees') }}
+    {{ nav('properties.index', 'Properties', ['properties.']) }}
+    {{ nav('tenants.index', 'Tenants', ['tenants.', 'leases.']) }}
+    {{ nav('rentday.index', 'Collect rent', ['rentday.index', 'rentday.pay']) }}
     {{ nav('rentday.payments', 'Payments', ['rentday.payments', 'rentday.receipt']) }}
-    <div class="nav-group">Portfolio</div>
-    {{ nav('properties.index', 'Properties', ['properties.index', 'properties.new', 'properties.detail', 'properties.edit', 'properties.unit']) }}
-    {{ nav('tenants.index', 'Tenants', ['tenants.']) }}
-    {{ nav('leases.index', 'Leases', ['leases.']) }}
-    {{ nav('properties.owners', 'Owners', ['properties.owner']) }}
-    <div class="nav-group">Money</div>
-    {{ nav('expenses.index', 'Expenses', ['expenses.index', 'expenses.detail']) }}
-    {{ nav('expenses.vendors', 'Vendors', ['expenses.vendor']) }}
+    {{ nav('rentday.late', 'Late') }}
     {{ nav('reports.index', 'Reports', ['reports.']) }}
-    <div class="nav-group">System</div>
-    {{ nav('admin.import_page', 'Import', ['admin.import']) }}
-    {{ nav('admin.backups', 'Backups', ['admin.backup']) }}
-    {{ nav('admin.settings', 'Settings', ['admin.settings', 'admin.categories']) }}
-    {{ nav('admin.audit', 'Audit log') }}
+    {{ nav('admin.settings', 'Settings', ['admin.']) }}
   </nav>
   <div class="foot">v{{ version }} · works offline
     {% if can_quit %}<form method="post" action="{{ url_for('main.quit_app') }}" data-confirm="Quit Rental Tracker? A backup is saved first.">

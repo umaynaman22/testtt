@@ -2,31 +2,16 @@
 {% import "_macros.html" as m with context %}
 {% block title %}{{ tenant.first_name }} {{ tenant.last_name }}{% endblock %}
 {% block content %}
-{% call m.page_head(tenant.first_name ~ " " ~ tenant.last_name, crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a>') %}
+{% call m.page_head((tenant.first_name ~ " " ~ tenant.last_name)|trim, "Not linked to a property yet", crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a>') %}
+  <a class="btn primary" href="{{ url_for('leases.new', tenant_id=tenant.id) }}">Link to a property</a>
   <a class="btn" href="{{ url_for('tenants.edit', tid=tenant.id) }}">Edit</a>
   {{ m.delete_link('tenant', tenant.id) }}
 {% endcall %}
-<div class="split">
-  <div class="card"><h2>Leases</h2>
-    {% if leases %}<div class="table-wrap"><table>
-      <thead><tr><th>Unit</th><th>Role</th><th>Status</th><th>Start</th><th>End</th><th class="num">Balance</th></tr></thead>
-      <tbody>{% for l in leases %}<tr>
-        <td><a href="{{ url_for('leases.detail', lease_id=l.id) }}">{{ l.property_code }} · {{ l.unit_label }}</a></td>
-        <td>{{ l.role|label }}</td><td>{{ l.status|badge }}</td><td class="nowrap">{{ l.start_date|fdate }}</td>
-        <td class="nowrap">{{ (l.move_out_date or l.end_date)|fdate }}</td>
-        <td class="num {{ 'neg' if l.balance_cents > 0 }}">{{ l.balance_cents|money }}</td></tr>{% endfor %}</tbody></table></div>
-    {% else %}<p class="muted">Not on any lease yet.</p>{% endif %}
-  </div>
-  <div class="card"><h2>Contact</h2>
-    <dl class="kv">
-      <dt>Phone</dt><dd>{{ tenant.phone or '—' }}{% if tenant.alt_phone %} / {{ tenant.alt_phone }}{% endif %}</dd>
-      <dt>Email</dt><dd>{% if tenant.email %}<a href="mailto:{{ tenant.email }}">{{ tenant.email }}</a>{% else %}—{% endif %}</dd>
-      <dt>Emergency</dt><dd>{{ tenant.emergency_contact_name or '—' }} {{ tenant.emergency_contact_phone or '' }}</dd>
-      <dt>Forwarding</dt><dd>{{ tenant.forwarding_address or '—' }}</dd>
-      {% if tenant.external_ref %}<dt>Tenant key</dt><dd>{{ tenant.external_ref }}</dd>{% endif %}
-      {% if tenant.notes %}<dt>Notes</dt><dd style="white-space:pre-wrap">{{ tenant.notes }}</dd>{% endif %}
-    </dl>
-  </div>
+<div class="card" style="max-width:640px">
+  <dl class="kv">
+    <dt>Phone</dt><dd>{{ tenant.phone or '—' }}</dd>
+    <dt>Email</dt><dd>{% if tenant.email %}<a href="mailto:{{ tenant.email }}">{{ tenant.email }}</a>{% else %}—{% endif %}</dd>
+    {% if tenant.notes %}<dt>Notes</dt><dd style="white-space:pre-wrap">{{ tenant.notes }}</dd>{% endif %}
+  </dl>
 </div>
-{{ m.docs(docs, "tenant", tenant.id) }}
 {% endblock %}

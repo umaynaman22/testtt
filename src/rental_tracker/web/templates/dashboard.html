@@ -2,88 +2,68 @@
 {% import "_macros.html" as m with context %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-{% call m.page_head("Dashboard", today|fdate("%A, %B %-d, %Y") ~ " · " ~ d.property_count ~ " properties, " ~ d.units ~ " units") %}
-  <a class="btn primary" href="{{ url_for('rentday.index') }}">Open Rent Day</a>
-  <a class="btn" href="{{ url_for('expenses.index') }}">Add expense</a>
+{% call m.page_head("Dashboard", today|fdate("%A, %B %-d, %Y") ~ " · " ~ d.property_count ~ " properties") %}
+  <a class="btn" href="{{ url_for('properties.new') }}">Add property</a>
+  <a class="btn primary" href="{{ url_for('rentday.index') }}">Collect rent</a>
 {% endcall %}
 
 <section class="kpis" aria-label="Key numbers">
   <div class="kpi">
-    <div class="label"><a href="{{ url_for('reports.view', key='collections') }}">{{ d.period_start|fdate("%B") }} rent collected</a></div>
-    <div class="value">{{ d.collected|money }}</div>
-    <div class="sub">of {{ d.expected|money }} billed{% if d.collected_pct is not none %} · {{ d.collected_pct|pct(0) }}{% endif %} · {{ d.received|money }} cash in this month</div>
-    {% set cp = [d.collected_pct or 0, 100]|min %}
+    <div class="label">{{ d.period_start|fdate("%B") }} rent paid</div>
+    <div class="value">{{ d.paid|money }}</div>
+    <div class="sub">of {{ d.billed|money }}{% if d.paid_pct is not none %} · {{ d.paid_pct|pct(0) }}{% endif %}</div>
+    {% set cp = [d.paid_pct or 0, 100]|min %}
     <div class="meter {{ 'ok' if cp >= 95 else ('warn' if cp >= 70 else 'bad') }}"><span style="width: {{ cp }}%"></span></div>
   </div>
   <div class="kpi">
-    <div class="label"><a href="{{ url_for('reports.view', key='aging') }}">Past due</a></div>
-    <div class="value {{ 'neg' if d.past_due_total }}">{{ d.past_due_total|money }}</div>
-    <div class="sub">{{ d.delinquent }} lease{{ '' if d.delinquent == 1 else 's' }} behind · {{ d.outstanding|money }} owed in total</div>
+    <div class="label"><a href="{{ url_for('rentday.late') }}">Late</a></div>
+    <div class="value {{ 'neg' if d.late }}">{{ d.late|length }}</div>
+    <div class="sub">{{ d.late_total|money }} overdue</div>
   </div>
   <div class="kpi">
-    <div class="label"><a href="{{ url_for('reports.view', key='rent-roll') }}">Occupancy</a></div>
-    <div class="value">{{ d.occupancy_pct|pct }}</div>
-    <div class="sub">{{ d.occupied }} of {{ d.units }} units · {{ d.vacant_count }} vacant</div>
-    <div class="meter"><span style="width: {{ d.occupancy_pct or 0 }}%"></span></div>
+    <div class="label"><a href="{{ url_for('tenants.index') }}">Owed in total</a></div>
+    <div class="value {{ 'neg' if d.owed }}">{{ d.owed|money }}</div>
+    <div class="sub">including rent not yet late</div>
   </div>
   <div class="kpi">
-    <div class="label"><a href="{{ url_for('reports.view', key='expirations') }}">Leases expiring</a></div>
-    <div class="value">{{ d.expiring[60] }}</div>
-    <div class="sub">in 60 days · {{ d.expiring[30] }} in 30 · {{ d.expiring[90] }} in 90</div>
-  </div>
-  <div class="kpi">
-    <div class="label"><a href="{{ url_for('reports.view', key='deposits') }}">Deposits held</a></div>
-    <div class="value">{{ d.deposits_held|money }}</div>
-    <div class="sub">owed back to tenants eventually</div>
+    <div class="label"><a href="{{ url_for('reports.view', key='vacancy') }}">Occupied</a></div>
+    <div class="value">{{ d.occupied }} / {{ d.units }}</div>
+    <div class="sub">{{ d.units - d.occupied }} vacant</div>
   </div>
 </section>
 
 <div class="split">
-  <div>
-    <div class="card">
-      <h2>Needs attention <span class="side muted">{{ d.alerts|length }}</span></h2>
-      {% if d.alerts %}
-      <ul class="alerts">
-        {% for a in d.alerts %}
-        <li class="{{ a.level }}">{% if a.link %}<a href="{{ url_for(a.link[0], **a.link[1]) }}">{{ a.text }}</a>{% else %}{{ a.text }}{% endif %}</li>
-        {% endfor %}
-      </ul>
-      {% else %}<p class="muted">Nothing needs attention right now.</p>{% endif %}
-    </div>
-    <div class="card">
-      <h2>Lowest collection this month <a class="side" href="{{ url_for('reports.view', key='collections') }}">All properties →</a></h2>
-      {% if d.low_collections %}
-      <div class="bars">
-        {% for r in d.low_collections %}
-        {% set rate = [r.rate or 0, 100]|min %}
-        <div class="bar-row">
-          <a href="{{ url_for('properties.detail', pid=r.property_id) }}">{{ r.property_code }}</a>
-          <div class="meter {{ 'ok' if rate >= 95 else ('warn' if rate >= 70 else 'bad') }}" title="{{ r.paid_cents|money }} of {{ r.billed_cents|money }}"><span style="width: {{ rate }}%"></span></div>
-          <span class="num">{{ r.rate|pct(0) }}</span>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}<p class="muted">No rent billed yet this month.</p>{% endif %}
-    </div>
+  <div class="card">
+    <h2>Late <a class="side" href="{{ url_for('rentday.late') }}">All →</a></h2>
+    {% if d.late %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Tenant</th><th>Property</th><th class="num">Overdue</th><th>How late</th></tr></thead>
+      <tbody>{% for r in d.late[:12] %}<tr>
+        <td><a href="{{ url_for('leases.detail', lease_id=r.lease_id) }}">{{ r.names }}</a></td>
+        <td>{{ place(r.property_code, r.unit_label) }}</td>
+        <td class="num neg">{{ r.past_due_cents|money }}</td>
+        <td>{{ m.state_badge(r) }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if d.late_fee_count %}<p class="small"><a href="{{ url_for('rentday.late') }}#fees">{{ d.late_fee_count }} late fee{{ 's' if d.late_fee_count != 1 }} to review</a></p>{% endif %}
+    {% else %}<p class="muted">Nobody is late.</p>{% endif %}
   </div>
   <div>
     <div class="card">
-      <h2>Vacant units <a class="side" href="{{ url_for('reports.view', key='vacancy') }}">Vacancy report →</a></h2>
-      {% if d.vacant %}
-      <table class="compact"><tbody>
-        {% for v in d.vacant %}
-        <tr><td><a href="{{ url_for('properties.unit_detail', unit_id=v.unit_id) }}">{{ v.property_code }} · {{ v.unit_label }}</a></td>
-            <td class="num muted">{% if v.days_vacant is not none %}{{ v.days_vacant }} days{% endif %}</td>
-            <td class="actions"><a class="btn small" href="{{ url_for('leases.new', unit_id=v.unit_id) }}">New lease</a></td></tr>
-        {% endfor %}
-      </tbody></table>
-      {% else %}<p class="muted">Every unit is occupied.</p>{% endif %}
+      <h2>Recent payments <a class="side" href="{{ url_for('rentday.payments') }}">All →</a></h2>
+      {% if d.recent_payments %}
+      <table class="compact"><tbody>{% for p in d.recent_payments %}<tr>
+        <td class="nowrap small">{{ p.received_date|fdate }}</td>
+        <td><a href="{{ url_for('leases.detail', lease_id=p.lease_id) }}">{{ p.tenants }}</a></td>
+        <td class="num">{{ p.amount_cents|money }}</td></tr>{% endfor %}</tbody></table>
+      {% else %}<p class="muted">No payments yet.</p>{% endif %}
     </div>
     <div class="card">
-      <h2>Backups</h2>
-      <p class="small">Last backup: <strong>{{ d.last_backup|fdate if d.last_backup else 'never' }}</strong></p>
-      <p class="small">External drive: {{ d.last_external|fdate if d.last_external else 'not set up' }}</p>
-      <div class="actions"><a class="btn small" href="{{ url_for('admin.backups') }}">Manage backups</a></div>
+      <h2>Vacant</h2>
+      {% if d.vacant %}
+      <table class="compact"><tbody>{% for v in d.vacant %}<tr>
+        <td><a href="{{ url_for('properties.detail', pid=v.property_id) }}">{{ place(v.property_code, v.unit_label) }}</a></td>
+        <td class="actions"><a class="btn small" href="{{ url_for('leases.new', unit_id=v.unit_id) }}">Add tenant</a></td></tr>{% endfor %}</tbody></table>
+      {% else %}<p class="muted">Every unit has a tenant.</p>{% endif %}
     </div>
   </div>
 </div>

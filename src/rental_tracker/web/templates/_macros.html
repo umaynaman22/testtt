@@ -1,20 +1,21 @@
-{# Form helpers. Import with:  {% import "_macros.html" as m with context %} #}
+{# Form helpers. Import with:  {% import "_macros.html" as m with context %}
+   Nothing is required: the `required` argument is accepted but ignored. #}
 {% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endmacro %}
 
 {% macro input(name, label, type="text", required=False, help=None, wide=False, placeholder="", attrs="", value=None) -%}
-<label class="field{{ ' wide' if wide }}"><span>{{ label }}{% if required %} <em>*</em>{% endif %}</span>
+<label class="field{{ ' wide' if wide }}"><span>{{ label }}</span>
   <input name="{{ name }}" type="{{ type }}" value="{{ value if value is not none else (values.get(name, '') if values else '') }}"
-         {% if required %}required{% endif %} {% if placeholder %}placeholder="{{ placeholder }}"{% endif %} {{ attrs|safe }}>
+         {% if placeholder %}placeholder="{{ placeholder }}"{% endif %} {{ attrs|safe }}>
   {% if help %}<small>{{ help }}</small>{% endif %}
 </label>
 {%- endmacro %}
 
-{% macro money(name, label, required=False, help=None, value=None) -%}
-{{ input(name, label, required=required, help=help, placeholder="0.00", attrs='inputmode="decimal" autocomplete="off"', value=value) }}
+{% macro money(name, label, required=False, help=None, value=None, placeholder="0.00") -%}
+{{ input(name, label, help=help, placeholder=placeholder, attrs='inputmode="decimal" autocomplete="off"', value=value) }}
 {%- endmacro %}
 
 {% macro date(name, label, required=False, help=None, value=None) -%}
-{{ input(name, label, type="date", required=required, help=help, value=value) }}
+{{ input(name, label, type="date", help=help, value=value) }}
 {%- endmacro %}
 
 {% macro textarea(name, label, help=None, wide=True) -%}
@@ -27,8 +28,8 @@
 {% macro select(name, label, options, required=False, blank=None, help=None, value=None) -%}
 {# options: list of (value, text) #}
 {% set current = (value if value is not none else (values.get(name, '') if values else ''))|string %}
-<label class="field"><span>{{ label }}{% if required %} <em>*</em>{% endif %}</span>
-  <select name="{{ name }}" {% if required %}required{% endif %}>
+<label class="field"><span>{{ label }}</span>
+  <select name="{{ name }}">
     {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
     {% for v, t in options %}<option value="{{ v }}" {{ 'selected' if v|string == current }}>{{ t }}</option>{% endfor %}
   </select>
@@ -38,22 +39,6 @@
 
 {% macro checkbox(name, label, checked=False) -%}
 <label class="field check"><input type="checkbox" name="{{ name }}" value="1" {{ 'checked' if checked }}><span>{{ label }}</span></label>
-{%- endmacro %}
-
-{% macro void_form(action, what="entry", nsf=False) -%}
-<details class="pop"><summary class="btn small danger">Void</summary>
-  <div class="pop-body">
-    <form method="post" action="{{ action }}">
-      {{ csrf() }}
-      <label class="field"><span>Why are you voiding this {{ what }}? <em>*</em></span>
-        <input name="reason" required placeholder="{{ 'Bounced check (NSF)' if nsf else 'Entered by mistake' }}"></label>
-      {% if nsf %}<label class="field" style="margin-top:8px"><span>Returned-payment fee to charge (optional)</span>
-        <input name="nsf_fee" inputmode="decimal" placeholder="0.00"></label>{% endif %}
-      <div class="actions"><button class="btn danger small">Void {{ what }}</button></div>
-      <p class="small muted">Voided entries stay in the history but no longer count.</p>
-    </form>
-  </div>
-</details>
 {%- endmacro %}
 
 {% macro delete_button(action, message, label="Delete", next=None, cls="btn small danger") -%}
@@ -66,35 +51,12 @@
 <a class="btn danger" href="{{ url_for('main.delete_record', kind=kind, record_id=record_id) }}">{{ label }}</a>
 {%- endmacro %}
 
-{% macro docs(documents, related_type, related_id) -%}
-<div class="card">
-  <h2>Documents <span class="side muted">{{ documents|length }}</span></h2>
-  {% if documents %}
-  <ul class="small" style="padding-left:18px;margin:0 0 10px">
-    {% for d in documents %}
-    <li><a href="{{ url_for('main.document', doc_id=d.id) }}" target="_blank">{{ d.title }}</a>
-      <span class="muted">· {{ d.doc_type|label }} · {{ (d.size_bytes / 1024)|round(0)|int }} KB{% if d.expires_on %} · expires {{ d.expires_on|fdate }}{% endif %}</span>
-      {{ delete_button(url_for('main.document_delete', doc_id=d.id), "Delete this document from the record?", label="delete", next=request.full_path, cls="btn link small") }}
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  <form method="post" action="{{ url_for('main.document_upload') }}" enctype="multipart/form-data">
-    {{ csrf() }}
-    <input type="hidden" name="related_type" value="{{ related_type }}">
-    <input type="hidden" name="related_id" value="{{ related_id }}">
-    <input type="hidden" name="next" value="{{ request.full_path }}">
-    <div class="form-grid">
-      <label class="field wide"><span>File</span><input type="file" name="file" required></label>
-      <label class="field"><span>Title</span><input name="title" placeholder="e.g. Signed lease 2026"></label>
-      <label class="field"><span>Type</span><select name="doc_type">
-        {% for t in ['lease','addendum','receipt','invoice','photo','insurance','id','screening','notice','letter','statement','other'] %}
-        <option value="{{ t }}">{{ t|label }}</option>{% endfor %}</select></label>
-      <label class="field"><span>Expires (optional)</span><input type="date" name="expires_on"></label>
-    </div>
-    <div class="actions"><button class="btn small">Attach</button></div>
-  </form>
-</div>
+{% macro state_badge(r) -%}
+{% if r.state == 'late' %}<span class="badge bad">Late {{ r.days_late }} day{{ '' if r.days_late == 1 else 's' }}</span>
+{% elif r.state == 'owes' %}<span class="badge warn">Owes</span>
+{% elif r.state == 'credit' %}<span class="badge info">Credit</span>
+{% elif r.state == 'none' %}<span class="badge">No property</span>
+{% else %}<span class="badge ok">Paid up</span>{% endif %}
 {%- endmacro %}
 
 {% macro page_head(title, sub=None, crumbs=None) -%}

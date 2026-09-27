@@ -1,7 +1,6 @@
 """Owners, properties, units and tags."""
 from __future__ import annotations
 
-import re
 import sqlite3
 from typing import Any
 
@@ -80,35 +79,76 @@ def get_property(conn: sqlite3.Connection, pid: int) -> sqlite3.Row:
          WHERE p.id = ?""", (pid,), "Property")
 
 
+def default_owner_id(conn: sqlite3.Connection) -> int:
+    """Properties need an owner in the database; the simple app uses one behind the scenes."""
+    row = conn.execute("SELECT id FROM owners ORDER BY id LIMIT 1").fetchone()
+    if row:
+        return row[0]
+    return conn.execute("INSERT INTO owners(name) VALUES ('Me')").lastrowid
+
+
+def _unique_code(conn: sqlite3.Connection, base: str, pid: int | None) -> str:
+    base = base.strip()[:60] or "Property"
+    code, n = base, 2
+    while conn.execute("SELECT 1 FROM properties WHERE code = ? AND id IS NOT ?", (code, pid)).fetchone():
+        code = f"{base} ({n})"
+        n += 1
+    return code
+
+
 def save_property(conn: sqlite3.Connection, pid: int | None, fields: dict[str, Any],
                   tags: list[str] | None = None, unit_labels: list[str] | None = None,
                   reindex: bool = True) -> int:
-    """Create or update a property. On create, ``unit_labels`` creates its units (None = one 'Main' unit)."""
-    _require(fields, {"owner_id": "Owner", "code": "Code", "name": "Name",
-                      "property_type": "Type", "address_line1": "Address",
-                      "city": "City", "state": "State", "postal_code": "ZIP / postal code"})
-    fields["code"] = str(fields["code"]).strip().upper()
-    if not re.fullmatch(r"[A-Z0-9][A-Z0-9_.\-]{0,29}", fields["code"]):
-        raise ServiceError("Code must be 1–30 letters, digits, dashes, dots or underscores (e.g. MAPLE-12)")
-    if fields["property_type"] not in PROPERTY_TYPES:
-        raise ServiceError("Unknown property type")
-    fields.setdefault("status", "active")
+    """Create or update a property. Every field is optional.
+
+    The name (usually the street address) doubles as the short label shown
+    everywhere. On create, ``unit_labels`` creates its units (None = one unit).
+    """
+    fields = {k: (v.strip() if isinstance(v, str) else v) for k, v in fields.items()}
+    existing = get_property(conn, pid) if pid is not None else None
+    name = fields.get("name") or fields.get("address_line1") or (existing["name"] if existing else None)
+    if not name:
+        n = conn.execute("SELECT COUNT(*) FROM properties").fetchone()[0] + 1
+        name = _unique_code(conn, f"Property {n}", pid)
+    fields["name"] = name
+    fields["code"] = _unique_code(conn, fields.get("code") or name, pid)
+    if "address_line1" in fields or existing is None:
+        fields["address_line1"] = fields.get("address_line1") or ""
+    for key in ("city", "state", "postal_code"):
+        if key in fields or existing is None:
+            fields[key] = fields.get(key) or ""
+    fields["owner_id"] = fields.get("owner_id") or (existing["owner_id"] if existing else default_owner_id(conn))
+    if fields.get("property_type") not in PROPERTY_TYPES:
+        fields["property_type"] = (existing["property_type"] if existing else
+                                   ("multi_family" if unit_labels and len(unit_labels) > 1 else "single_family"))
+    if not fields.get("status"):
+        fields["status"] = existing["status"] if existing else "active"
     if fields["status"] not in PROPERTY_STATUSES:
         raise ServiceError("Unknown status")
-    dup = conn.execute("SELECT id FROM properties WHERE code = ? AND id IS NOT ?",
-                       (fields["code"], pid)).fetchone()
-    if dup:
-        raise ServiceError(f"Another property already uses the code {fields['code']}")
-    row_or_error(conn, "SELECT id FROM owners WHERE id = ?", (fields["owner_id"],), "Owner")
     new_id = _save(conn, "properties", PROPERTY_FIELDS, pid, fields, "property")
     if pid is None:
-        for label in ["Main"] if unit_labels is None else unit_labels:
+        for label in ["Main"] if not unit_labels else unit_labels:
             save_unit(conn, None, new_id, {"unit_label": label}, reindex=False)
     if tags is not None:
         set_property_tags(conn, new_id, tags)
     if reindex:
         search.rebuild(conn)
     return new_id
+
+
+def parse_unit_labels(text: str | None) -> list[str] | None:
+    """'3' -> ['1', '2', '3'];  'A, B' -> ['A', 'B'];  '' -> None (one unit)."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    if text.isdigit() and 1 <= int(text) <= 200:
+        return [str(i) for i in range(1, int(text) + 1)]
+    labels = []
+    for part in text.split(","):
+        part = part.strip()
+        if part and part not in labels:
+            labels.append(part)
+    return labels or None
 
 
 def set_property_tags(conn: sqlite3.Connection, pid: int, names: list[str]) -> None:
@@ -146,7 +186,7 @@ def property_ids_for(conn: sqlite3.Connection, *, property_id: int | None = None
 
 
 SORTS = {
-    "code": "p.code",
+    "code": "p.code COLLATE NOCASE",
     "name": "p.name COLLATE NOCASE",
     "city": "p.city COLLATE NOCASE, p.code",
     "occupancy": "occupancy_pct, p.code",
@@ -220,8 +260,13 @@ def get_unit(conn: sqlite3.Connection, unit_id: int) -> sqlite3.Row:
 
 def save_unit(conn: sqlite3.Connection, unit_id: int | None, property_id: int, fields: dict[str, Any],
               reindex: bool = True) -> int:
-    _require(fields, {"unit_label": "Unit label"})
-    fields["unit_label"] = str(fields["unit_label"]).strip()
+    fields["unit_label"] = str(fields.get("unit_label") or "").strip()
+    if not fields["unit_label"]:
+        if unit_id is not None:
+            fields["unit_label"] = get_unit(conn, unit_id)["unit_label"]
+        else:
+            n = conn.execute("SELECT COUNT(*) FROM units WHERE property_id = ?", (property_id,)).fetchone()[0] + 1
+            fields["unit_label"] = f"Unit {n}"
     fields.setdefault("status", "active")
     if fields["status"] not in UNIT_STATUSES:
         raise ServiceError("Unknown unit status")

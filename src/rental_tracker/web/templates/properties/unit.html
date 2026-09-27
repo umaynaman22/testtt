@@ -2,37 +2,27 @@
 {% import "_macros.html" as m with context %}
 {% block title %}{{ unit.property_code }} · {{ unit.unit_label }}{% endblock %}
 {% block content %}
-{% call m.page_head(unit.property_code ~ " · unit " ~ unit.unit_label, unit.property_name,
-      crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a> / <a href="' ~ url_for('properties.detail', pid=unit.property_id) ~ '">' ~ unit.property_code ~ '</a>') %}
-  {% if unit.status == 'active' %}<a class="btn primary" href="{{ url_for('leases.new', unit_id=unit.id) }}">New lease</a>{% endif %}
+{% call m.page_head("Unit " ~ unit.unit_label, unit.property_name,
+      crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a> / <a href="' ~ url_for('properties.detail', pid=unit.property_id) ~ '">' ~ unit.property_name ~ '</a>') %}
   {{ m.delete_link('unit', unit.id, 'Delete unit') }}
 {% endcall %}
 <div class="split">
   <div class="card">
-    <h2>Lease history</h2>
-    {% if leases %}<div class="table-wrap"><table>
-      <thead><tr><th>Tenants</th><th>Status</th><th>Start</th><th>End</th><th class="num">Rent</th><th class="num">Balance</th></tr></thead>
-      <tbody>{% for l in leases %}<tr>
-        <td><a href="{{ url_for('leases.detail', lease_id=l.id) }}">{{ l.tenants or '(no tenants)' }}</a></td><td>{{ l.status|badge }}</td>
-        <td class="nowrap">{{ l.start_date|fdate }}</td><td class="nowrap">{{ (l.move_out_date or l.end_date)|fdate }}</td>
-        <td class="num">{{ l.rent_cents|money }}</td><td class="num {{ 'neg' if l.balance_cents > 0 }}">{{ l.balance_cents|money(true) }}</td></tr>{% endfor %}
-      </tbody></table></div>
-    {% else %}<p class="muted">This unit has never been leased in the app.</p>{% endif %}
+    <h2>Tenants over time</h2>
+    {% if leases %}<table><tbody>{% for l in leases %}<tr>
+      <td><a href="{{ url_for('leases.detail', lease_id=l.id) }}">{{ l.tenants or 'Tenant' }}</a></td>
+      <td class="small muted">{{ l.start_date|fdate }} – {{ (l.move_out_date|fdate) if l.move_out_date else 'now' }}</td>
+      <td class="num {{ 'neg' if l.balance_cents > 0 }}">{{ l.balance_cents|money(true) }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="muted">No tenants yet. <a href="{{ url_for('leases.new', unit_id=unit.id) }}">Add one</a>.</p>{% endif %}
   </div>
   <form method="post" class="card">
-    <h2>Unit details</h2>
+    <h2>Unit</h2>
     {{ m.csrf() }}
-    <div class="form-grid">
-      {{ m.input("unit_label", "Unit label", required=True) }}
-      {{ m.select("status", "Status", statuses, help="Offline = being renovated, not rentable") }}
-      {{ m.input("bedrooms", "Bedrooms", type="number", attrs='step="0.5" min="0"') }}
-      {{ m.input("bathrooms", "Bathrooms", type="number", attrs='step="0.5" min="0"') }}
-      {{ m.input("square_feet", "Square feet", type="number") }}
-      {{ m.money("market_rent", "Market rent") }}
+    <div class="form-grid" style="grid-template-columns:minmax(0,1fr)">
+      {{ m.input("unit_label", "Name") }}
       {{ m.textarea("notes", "Notes") }}
     </div>
     <div class="actions"><button class="btn">Save</button></div>
   </form>
 </div>
-{{ m.docs(docs, "unit", unit.id) }}
 {% endblock %}

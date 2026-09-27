@@ -21,7 +21,9 @@ DEPOSIT_OUTFLOWS = ("deduction", "refund", "applied_to_balance")
 
 
 def _positive(amount: int | None, what: str = "Amount") -> int:
-    if amount is None or amount <= 0:
+    if amount is None:
+        raise ServiceError(f"Enter {what[0].lower() + what[1:]}")
+    if amount <= 0:
         raise ServiceError(f"{what} must be greater than zero")
     return amount
 
@@ -120,10 +122,12 @@ def ledger_entries(conn: sqlite3.Connection, lease_id: int) -> list[dict]:
 
 # ---- charges ------------------------------------------------------------------
 
-def add_charge(conn: sqlite3.Connection, lease_id: int, charge_type: str, amount: int | None,
-               due: str, description: str | None = None, work_order_id: int | None = None) -> int:
-    if charge_type not in CHARGE_TYPES or charge_type in ("credit", "opening_balance"):
-        raise ServiceError("Choose a charge type")
+def add_charge(conn: sqlite3.Connection, lease_id: int, charge_type: str | None, amount: int | None,
+               due: str | None, description: str | None = None, work_order_id: int | None = None) -> int:
+    charge_type = charge_type or "other"
+    due = due or date.today().isoformat()
+    if charge_type not in CHARGE_TYPES or charge_type == "credit":
+        raise ServiceError("Unknown charge type")
     _positive(amount)
     lease_row(conn, lease_id)
     ensure_open(conn, due)
@@ -135,11 +139,11 @@ def add_charge(conn: sqlite3.Connection, lease_id: int, charge_type: str, amount
     return cur.lastrowid
 
 
-def add_credit(conn: sqlite3.Connection, lease_id: int, amount: int | None, when: str,
-               description: str) -> int:
+def add_credit(conn: sqlite3.Connection, lease_id: int, amount: int | None, when: str | None,
+               description: str | None) -> int:
     _positive(amount)
-    if not (description or "").strip():
-        raise ServiceError("Say what the credit is for (e.g. 'Concession: paint touch-up')")
+    when = when or date.today().isoformat()
+    description = (description or "").strip() or "Credit"
     lease_row(conn, lease_id)
     ensure_open(conn, when)
     cur = conn.execute(
@@ -170,12 +174,15 @@ def next_receipt_number(conn: sqlite3.Connection, year: int) -> str:
     return f"{get_setting(conn, 'receipt_number_prefix', 'R-')}{year}-{n:06d}"
 
 
-def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, received: str,
-                   method: str, reference: str | None = None, notes: str | None = None,
+def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, received: str | None,
+                   method: str | None, reference: str | None = None, notes: str | None = None,
                    paid_by_tenant_id: int | None = None, allow_deposit_method: bool = False) -> int:
-    _positive(amount)
+    """Record money received. Date defaults to today and method to 'other'."""
+    _positive(amount, "The amount paid")
+    received = received or date.today().isoformat()
+    method = method or "other"
     if method not in PAYMENT_METHODS and not (allow_deposit_method and method == "deposit_applied"):
-        raise ServiceError("Choose a payment method")
+        raise ServiceError("Unknown payment method")
     lease_row(conn, lease_id)
     received_d = parse_date(received)
     ensure_open(conn, received_d)
@@ -265,7 +272,8 @@ def deposit_transactions(conn: sqlite3.Connection, lease_id: int) -> list[sqlite
 
 
 def record_deposit(conn: sqlite3.Connection, lease_id: int, txn_type: str, amount: int | None,
-                   when: str, description: str | None = None) -> int:
+                   when: str | None, description: str | None = None) -> int:
+    when = when or date.today().isoformat()
     if txn_type not in DEPOSIT_TYPES:
         raise ServiceError("Choose a deposit transaction type")
     _positive(amount)
@@ -273,8 +281,6 @@ def record_deposit(conn: sqlite3.Connection, lease_id: int, txn_type: str, amoun
     ensure_open(conn, when)
     if txn_type in DEPOSIT_OUTFLOWS and amount > deposit_held(conn, lease_id):
         raise ServiceError("That is more than the deposit currently held")
-    if txn_type == "deduction" and not (description or "").strip():
-        raise ServiceError("Itemize the deduction (e.g. 'Carpet replacement, bedroom 2')")
     payment_id = None
     if txn_type == "applied_to_balance":
         payment_id = record_payment(conn, lease_id, amount, when, "deposit_applied",

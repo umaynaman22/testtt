@@ -1,4 +1,4 @@
-"""Rent Day batch entry, late fee review, payments list and receipts."""
+"""Collect rent (batch entry), who is late, the payments list and receipts."""
 from __future__ import annotations
 
 import csv
@@ -9,8 +9,8 @@ from flask import Blueprint, Response, abort, flash, redirect, render_template, 
 from ... import db as dbmod
 from ...domain.money import format_money
 from ...domain.periods import add_periods, parse_period, period_end, period_start
-from ...services import deletion, late_fees, ledger, portfolio, rent_posting, rentday
-from ...services.common import csv_row
+from ...services import deletion, late_fees, ledger, portfolio, rent_posting, rentday, tenants
+from ...services.common import csv_row, get_setting
 from .. import attempt, db, today
 from ..forms import Form
 from . import current_period, options, safe_next
@@ -32,7 +32,7 @@ def _period_arg() -> str:
 def index():
     period = _period_arg()
     show = request.args.get("show", "all")
-    rows = rentday.rows(db(), period, q=request.args.get("q", ""), tag_id=request.args.get("tag", type=int), show=show)
+    rows = rentday.rows(db(), period, q=request.args.get("q", ""), show=show)
     totals = {"billed": sum(r["billed_cents"] for r in rows), "paid": sum(r["period_paid_cents"] for r in rows),
               "received": sum(r["paid_cents"] for r in rows),
               "owed": sum(max(r["balance_cents"], 0) for r in rows),
@@ -40,7 +40,7 @@ def index():
     return render_template("rentday/index.html", rows=rows, period=period, show=show, totals=totals,
                            prev=add_periods(period, -1), next=add_periods(period, 1),
                            methods=options(ledger.PAYMENT_METHODS, METHOD_LABELS),
-                           tags=portfolio.all_tags(db()), pay_date=min(today(), period_end(period)).isoformat()
+                           pay_date=min(today(), period_end(period)).isoformat()
                            if period_start(period) <= today() else period_start(period).isoformat())
 
 
@@ -55,9 +55,9 @@ def pay():
     saved = None
     try:
         with dbmod.transaction(db()):
-            amount = f.money("amount", "Amount", required=True)
-            when = f.date("received_date", "Date", required=True)
-            method = f.choice("method", "Method", ledger.PAYMENT_METHODS)
+            amount = f.money("amount", "Amount")
+            when = f.date("received_date", "Date")
+            method = f.raw("method") or None
             f.check()
             current = rentday.rows(db(), period, lease_id=lease_id)
             if current:
@@ -89,19 +89,21 @@ def post_rent():
     return redirect(url_for("rentday.index", period=request.form.get("period")))
 
 
-@bp.route("/late-fees", methods=["GET", "POST"], endpoint="late_fees")
-def late_fees_view():
+@bp.route("/late", methods=["GET", "POST"])
+def late():
+    """Who is behind on rent, and any late fees waiting to be charged."""
     if request.method == "POST":
         action = request.form.get("action")
-        keys = request.form.getlist("key")
         with attempt() as r:
-            r["n"] = late_fees.apply(db(), keys, action, today())
+            r["n"] = late_fees.apply(db(), request.form.getlist("key"), action, today())
         if r["done"]:
-            flash(f"{'Posted' if action == 'approve' else 'Waived'} {r['n']} late fee(s).", "ok")
-        return redirect(url_for("rentday.late_fees"))
+            flash(f"{'Charged' if action == 'approve' else 'Skipped'} {r['n']} late fee(s).", "ok")
+        return redirect(url_for("rentday.late"))
+    rows = [r for r in tenants.tenancies(db(), today=today(), status="all") if r["past_due_cents"] > 0]
+    rows.sort(key=lambda r: (-r["days_late"], -r["past_due_cents"]))
     cands = late_fees.find_candidates(db(), today())
-    return render_template("rentday/late_fees.html", cands=cands, total=sum(c.fee_cents for c in cands))
-
+    return render_template("rentday/late.html", rows=rows, total=sum(r["past_due_cents"] for r in rows),
+                           cands=cands, fee_total=sum(c.fee_cents for c in cands))
 
 
 @bp.route("/payments")
@@ -140,4 +142,6 @@ def delete_payment(payment_id: int):
 @bp.route("/payments/<int:payment_id>/receipt")
 def receipt(payment_id: int):
     p = ledger.get_payment(db(), payment_id)
-    return render_template("rentday/receipt.html", p=p, balance=ledger.lease_balance(db(), p["lease_id"]))
+    return render_template("rentday/receipt.html", p=p, balance=ledger.lease_balance(db(), p["lease_id"]),
+                           business=get_setting(db(), "business_name", ""),
+                           business_contact=get_setting(db(), "business_contact", ""))

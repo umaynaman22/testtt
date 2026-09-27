@@ -1,54 +1,40 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}{{ prop.code }}{% endblock %}
+{% block title %}{{ prop.name }}{% endblock %}
 {% block content %}
-{% call m.page_head(prop.code ~ " — " ~ prop.name, prop.address_line1 ~ (", " ~ prop.address_line2 if prop.address_line2 else "") ~ ", " ~ prop.city ~ ", " ~ prop.state ~ " " ~ prop.postal_code,
-                    crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a>') %}
-  <a class="btn" href="{{ url_for('reports.view', key='income-statement', property=prop.id) }}">P&amp;L</a>
-  <a class="btn" href="{{ url_for('expenses.index', property=prop.id) }}">Add expense</a>
+{% set addr = [prop.city, prop.state, prop.postal_code]|select|join(' ') %}
+{% call m.page_head(prop.name, addr or None, crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a>') %}
   <a class="btn" href="{{ url_for('properties.edit', pid=prop.id) }}">Edit</a>
   {{ m.delete_link('property', prop.id) }}
 {% endcall %}
-<section class="kpis">
-  <div class="kpi"><div class="label">Owner</div><div class="value" style="font-size:1.05rem">{{ prop.owner_name }}</div><div class="sub">{{ prop.property_type|label }}{% if prop.status != 'active' %} · {{ prop.status|label }}{% endif %}</div></div>
-  <div class="kpi"><div class="label">Income {{ today.year }} to date</div><div class="value">{{ ytd.income|money }}</div><div class="sub">cash received</div></div>
-  <div class="kpi"><div class="label">Operating expenses {{ today.year }}</div><div class="value">{{ ytd.expenses|money }}</div></div>
-  <div class="kpi"><div class="label">NOI {{ today.year }}</div><div class="value {{ 'neg' if ytd.noi < 0 }}">{{ ytd.noi|money }}</div>
-    {% if prop.estimated_value_cents %}<div class="sub">Est. value {{ prop.estimated_value_cents|money }}</div>{% endif %}</div>
-</section>
-{% if tags %}<p>{% for t in tags %}<span class="badge info">{{ t }}</span> {% endfor %}</p>{% endif %}
 
 <div class="card" id="units">
-  <h2>Units <span class="side muted">{{ units|length }}</span></h2>
+  <h2>{{ 'Tenants' if units|length > 1 else 'Tenant' }}</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Unit</th><th>Status</th><th>Tenants</th><th>Lease ends</th><th class="num">Rent</th><th class="num">Market</th><th class="num">Balance</th><th></th></tr></thead>
+    <thead><tr>{% if units|length > 1 %}<th>Unit</th>{% endif %}<th>Tenant</th><th>Phone</th><th class="num">Rent</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
     <tbody>
-    {% for u in units %}
+    {% for u in units %}{% set t = people.get(u.id) %}
       <tr>
-        <td><a href="{{ url_for('properties.unit_detail', unit_id=u.id) }}"><strong>{{ u.unit_label }}</strong></a>
-          <div class="small muted">{% if u.bedrooms is not none %}{{ u.bedrooms|round(1)|string|replace('.0','') }} bd{% endif %}{% if u.bathrooms is not none %} · {{ u.bathrooms|round(1)|string|replace('.0','') }} ba{% endif %}{% if u.square_feet %} · {{ u.square_feet }} sq ft{% endif %}</div></td>
-        <td>{% if u.status != 'active' %}{{ u.status|badge }}{% elif u.lease_id %}{{ u.lease_status|badge }}{% else %}{{ 'vacant'|badge }}{% endif %}</td>
-        <td>{% if u.lease_id %}<a href="{{ url_for('leases.detail', lease_id=u.lease_id) }}">{{ u.tenants }}</a>{% else %}<span class="muted">—</span>{% endif %}
-          {% if u.future_lease_id %}<div class="small"><a href="{{ url_for('leases.detail', lease_id=u.future_lease_id) }}">Upcoming lease</a></div>{% endif %}</td>
-        <td class="nowrap">{{ u.end_date|fdate if u.lease_status == 'active' else ('Month-to-month' if u.lease_status == 'month_to_month' else '') }}</td>
-        <td class="num">{{ u.current_rent_cents|money }}</td>
-        <td class="num muted">{{ u.market_rent_cents|money }}</td>
-        <td class="num {{ 'neg' if u.balance_cents > 0 }}">{{ u.balance_cents|money(true) }}</td>
-        <td class="actions">{% if not u.lease_id and u.status == 'active' %}<a class="btn small" href="{{ url_for('leases.new', unit_id=u.id) }}">New lease</a>{% endif %}</td>
+        {% if units|length > 1 %}<td><a href="{{ url_for('properties.unit_detail', unit_id=u.id) }}">{{ u.unit_label }}</a></td>{% endif %}
+        {% if t %}
+          <td><a href="{{ url_for('leases.detail', lease_id=t.lease_id) }}"><strong>{{ t.names }}</strong></a>{% if t.status == 'future' %} <span class="badge info">moves in {{ t.start_date|fdate }}</span>{% endif %}</td>
+          <td class="nowrap">{{ t.phone or '' }}</td>
+          <td class="num">{{ t.current_rent_cents|money }}</td>
+          <td class="num {{ 'neg' if t.balance_cents > 0 }}">{{ t.balance_cents|money }}</td>
+          <td>{{ m.state_badge(t) }}</td>
+          <td class="actions"><a class="btn small primary" href="{{ url_for('leases.detail', lease_id=t.lease_id) }}#pay">Record payment</a></td>
+        {% else %}
+          <td class="muted">Vacant</td><td></td><td></td><td></td><td></td>
+          <td class="actions"><a class="btn small primary" href="{{ url_for('leases.new', unit_id=u.id) }}">Add tenant</a></td>
+        {% endif %}
       </tr>
     {% endfor %}
     </tbody></table></div>
   <details class="section"><summary>Add a unit</summary>
-    <form method="post" action="{{ url_for('properties.add_unit', pid=prop.id) }}">
+    <form method="post" action="{{ url_for('properties.add_unit', pid=prop.id) }}" class="filters" style="margin-top:8px">
       {{ m.csrf() }}
-      <div class="form-grid">
-        {{ m.input("unit_label", "Unit label", required=True, placeholder="e.g. 2B") }}
-        {{ m.input("bedrooms", "Bedrooms", type="number", attrs='step="0.5" min="0"') }}
-        {{ m.input("bathrooms", "Bathrooms", type="number", attrs='step="0.5" min="0"') }}
-        {{ m.input("square_feet", "Square feet", type="number") }}
-        {{ m.money("market_rent", "Market rent") }}
-      </div>
-      <div class="actions"><button class="btn">Add unit</button></div>
+      {{ m.input("unit_label", "Unit name", placeholder="e.g. 2B") }}
+      <button class="btn">Add unit</button>
     </form>
   </details>
 </div>
@@ -56,28 +42,18 @@
 <div class="grid-2">
   <div class="card">
     <h2>Recent payments <a class="side" href="{{ url_for('rentday.payments', property=prop.id) }}">All →</a></h2>
-    {% if recent_payments %}<div class="table-wrap"><table><tbody>
-      {% for p in recent_payments %}<tr class="{{ 'voided' if p.voided_at }}"><td class="nowrap">{{ p.received_date|fdate }}</td><td>{{ p.unit_label }} · {{ p.tenants }}</td><td class="num">{{ p.amount_cents|money }}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<p class="muted">No payments yet.</p>{% endif %}
+    {% if payments %}<table class="compact"><tbody>
+      {% for p in payments %}<tr><td class="nowrap small">{{ p.received_date|fdate }}</td><td>{{ p.tenants }}</td><td class="num">{{ p.amount_cents|money }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="muted">No payments yet.</p>{% endif %}
   </div>
   <div class="card">
-    <h2>Recent expenses <a class="side" href="{{ url_for('expenses.index', property=prop.id) }}">All →</a></h2>
-    {% if recent_expenses %}<div class="table-wrap"><table><tbody>
-      {% for e in recent_expenses %}<tr class="{{ 'voided' if e.voided_at }}"><td class="nowrap">{{ e.expense_date|fdate }}</td><td><a href="{{ url_for('expenses.detail', expense_id=e.id) }}">{{ e.category_name }}</a>{% if e.vendor_name %} · {{ e.vendor_name }}{% endif %}</td><td class="num">{{ e.amount_cents|money }}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<p class="muted">No expenses yet.</p>{% endif %}
+    <h2>Past tenants</h2>
+    {% if past %}<table class="compact"><tbody>
+      {% for t in past %}<tr><td><a href="{{ url_for('leases.detail', lease_id=t.lease_id) }}">{{ t.names }}</a></td>
+        <td class="small muted">moved out {{ t.move_out_date|fdate }}</td>
+        <td class="num {{ 'neg' if t.balance_cents > 0 }}">{{ t.balance_cents|money(true) }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="muted">None yet.</p>{% endif %}
+    {% if prop.notes %}<h3>Notes</h3><p style="white-space:pre-wrap">{{ prop.notes }}</p>{% endif %}
   </div>
-</div>
-<div class="grid-2">
-  <div class="card"><h2>Details</h2>
-    <dl class="kv small">
-      {% if prop.parcel_number %}<dt>Parcel</dt><dd>{{ prop.parcel_number }}</dd>{% endif %}
-      {% if prop.year_built %}<dt>Year built</dt><dd>{{ prop.year_built }}</dd>{% endif %}
-      {% if prop.hoa_name %}<dt>HOA</dt><dd>{{ prop.hoa_name }}</dd>{% endif %}
-      {% if prop.purchase_date %}<dt>Purchased</dt><dd>{{ prop.purchase_date|fdate }} for {{ prop.purchase_price_cents|money }}</dd>{% endif %}
-      {% if prop.cash_invested_cents %}<dt>Cash invested</dt><dd>{{ prop.cash_invested_cents|money }}</dd>{% endif %}
-      {% if prop.notes %}<dt>Notes</dt><dd style="white-space:pre-wrap">{{ prop.notes }}</dd>{% endif %}
-    </dl>
-  </div>
-  {{ m.docs(docs, "property", prop.id) }}
 </div>
 {% endblock %}

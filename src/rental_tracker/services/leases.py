@@ -51,25 +51,34 @@ def _current_lease_on_unit(conn, unit_id: int, exclude: int | None = None) -> sq
 
 
 def _validate_terms(t: dict[str, Any]) -> None:
-    if t.get("rent_due_day") is None or not 1 <= t["rent_due_day"] <= 28:
+    """Fill sensible defaults for anything left blank, and reject only impossible values."""
+    if t.get("rent_due_day") is None:
+        t["rent_due_day"] = 1
+    if not 1 <= t["rent_due_day"] <= 28:
         raise ServiceError("Rent due day must be between 1 and 28")
     if t.get("late_fee_type") not in LATE_FEE_TYPES:
-        raise ServiceError("Choose a late fee type")
-    if t["late_fee_type"] == "flat" and not t.get("late_fee_flat_cents"):
-        raise ServiceError("Enter the flat late fee amount")
-    if t["late_fee_type"] == "percent" and not t.get("late_fee_percent_bp"):
-        raise ServiceError("Enter the late fee percentage")
-    if t.get("late_fee_grace_days") is None or t["late_fee_grace_days"] < 0:
+        t["late_fee_type"] = "none"
+    if (t["late_fee_type"] == "flat" and not t.get("late_fee_flat_cents")) or \
+            (t["late_fee_type"] == "percent" and not t.get("late_fee_percent_bp")):
+        t["late_fee_type"] = "none"  # no amount given means no late fee
+    if t.get("late_fee_grace_days") is None:
+        t["late_fee_grace_days"] = 5
+    if t["late_fee_grace_days"] < 0:
         raise ServiceError("Grace days cannot be negative")
 
 
 def create_lease(conn: sqlite3.Connection, *, unit_id: int, tenants: list[tuple[int, str]],
-                 start: str, end: str | None, rent_cents: int | None, today: date,
+                 start: str | None, end: str | None, rent_cents: int | None, today: date,
                  draft: bool = False, billing_start: str | None = None,
                  recurring: list[dict] | None = None, **terms: Any) -> int:
-    """Create a lease. Status is draft, future (starts later) or active."""
-    if rent_cents is None or rent_cents < 0:
-        raise ServiceError("Enter the monthly rent")
+    """Create a lease. Status is draft, future (starts later) or active.
+
+    Rent (0 = none) and start date (today) are optional.
+    """
+    rent_cents = rent_cents or 0
+    if rent_cents < 0:
+        raise ServiceError("Rent can't be negative")
+    start = start or today.isoformat()
     if not tenants:
         raise ServiceError("Add at least one tenant")
     if not any(role == "primary" for _, role in tenants):
@@ -90,8 +99,8 @@ def create_lease(conn: sqlite3.Connection, *, unit_id: int, tenants: list[tuple[
     if status == "active":
         existing = _current_lease_on_unit(conn, unit_id)
         if existing:
-            raise ServiceError(f"This unit already has a current lease (#{existing['id']}). "
-                               "Record the move-out or a renewal first.")
+            raise ServiceError("Someone already lives there. Record their move-out first, or use "
+                               "'Add another person' on their page for roommates.")
     data = {"unit_id": unit_id, "status": status, "start_date": start_d.isoformat(),
             "end_date": end_d.isoformat() if end_d else None, "rent_cents": rent_cents,
             "billing_start_date": parse_date(billing_start).isoformat() if billing_start else None,
