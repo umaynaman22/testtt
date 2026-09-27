@@ -192,19 +192,43 @@ def test_fill_in_past_rent_up_to_a_date_and_rebill_on_edit(app, client):
     assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 7 * 1000000 - 6 * 1000000
 
 
+def _old_style_tenant(app, name):
+    """A tenant added by an older version: moved in 2025-05-01, rent billed only from Sep 2026."""
+    from rental_tracker.services import leases, portfolio, tenants
+    conn = dbmod.connect(app.extensions["rental_tracker"].data.db)
+    pid = portfolio.save_property(conn, None, {"name": f"{name}'s unit"})
+    unit = conn.execute("SELECT id FROM units WHERE property_id = ?", (pid,)).fetchone()[0]
+    tid = tenants.save_tenant(conn, None, {"first_name": name})
+    lid = leases.create_lease(conn, unit_id=unit, tenants=[(tid, "primary")], start="2025-05-01", end=None,
+                              rent_cents=500000, today=TODAY, billing_start="2026-09-01", move_in_date="2025-05-01")
+    conn.close()
+    return lid
+
+
 def test_older_tenants_can_be_billed_from_move_in(app, client):
     """Tenants added before rent was billed from the move-in date can get their past months billed."""
     token = csrf(client)
-    lid, start, billed_from = dbmod.connect(app.extensions["rental_tracker"].data.db).execute(
-        "SELECT id, start_date, billing_start_date FROM leases WHERE billing_start_date > start_date "
-        "AND status = 'active' LIMIT 1").fetchone()
-    edit = client.get(f"/leases/{lid}/edit").get_data(as_text=True)
-    assert 'name="bill_from_move_in"' in edit
-    before = q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0]
-    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "moved_in": start})  # saving alone changes nothing
-    assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0] == before
-    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "moved_in": start, "bill_from_move_in": "1"})
-    assert q(app, f"SELECT MIN(period) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'") == [start[:7]]
+    lid = _old_style_tenant(app, "Old")
+    page = client.get(f"/leases/{lid}").get_data(as_text=True)
+    assert "Fill in past rent" in page and "Bill rent since May 1, 2025" in page and "Mark rent as paid" not in page
+    r = client.post(f"/leases/{lid}/bill-from-move-in", data={"csrf_token": token}, follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert "Rent is now billed from the move-in date" in page
+    assert "Bill rent since" not in page and "Mark rent as paid" in page and "17 rent bills unpaid" in page
+    assert q(app, f"SELECT MIN(period) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'") == ["2025-05"]
+    client.post(f"/leases/{lid}/fill-rent", data={"csrf_token": token, "method": "cash"})
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}") == [0]
+    assert "Fill in past rent" not in client.get(f"/leases/{lid}").get_data(as_text=True)
+
+
+def test_older_tenants_edit_checkbox(app, client):
+    token = csrf(client)
+    lid = _old_style_tenant(app, "Older")
+    assert 'name="bill_from_move_in"' in client.get(f"/leases/{lid}/edit").get_data(as_text=True)
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "moved_in": "2025-05-01"})  # saving alone changes nothing
+    assert q(app, f"SELECT MIN(period) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'") == ["2026-09"]
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "moved_in": "2025-05-01", "bill_from_move_in": "1"})
+    assert q(app, f"SELECT MIN(period) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'") == ["2025-05"]
     assert q(app, f"SELECT billing_start_date FROM leases WHERE id = {lid}") == [None]
     assert 'name="bill_from_move_in"' not in client.get(f"/leases/{lid}/edit").get_data(as_text=True)
 

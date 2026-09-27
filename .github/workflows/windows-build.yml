@@ -30,6 +30,18 @@ jobs:
           cache: pip
           cache-dependency-path: packaging/requirements-build.txt
 
+      - name: Give this build its own version number (0.1.<run number>)
+        run: |
+          # Every download then has a different file name, and the app shows the same number in its sidebar.
+          $v = "0.1.$env:GITHUB_RUN_NUMBER"
+          foreach ($f in @("src/rental_tracker/__init__.py", "pyproject.toml")) {
+            (Get-Content $f) -replace '^(__version__|version) = "0\.1\.0"$', ('$1 = "' + $v + '"') | Set-Content $f -Encoding utf8
+          }
+          foreach ($f in @("src/rental_tracker/__init__.py", "pyproject.toml")) {
+            if (-not (Select-String -Path $f -Pattern ('= "' + $v + '"') -SimpleMatch -Quiet)) { throw "could not set the version in $f" }
+          }
+          Write-Host "Version $v"
+
       - name: Install
         run: |
           python -m pip install --upgrade pip

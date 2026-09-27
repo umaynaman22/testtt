@@ -26,6 +26,8 @@ Every push builds a Windows installer and a portable `.exe` on GitHub Actions ([
    - `RentalTracker-Portable-<version>.exe`: a single file you can run from anywhere, such as a USB stick. It takes a few seconds longer to start.
    - `SHA256SUMS.txt`: checksums, if you want to verify the files.
 
+Each build gets its own version number, `0.1.<build number>`, in the file names and at the bottom of the app's sidebar (e.g. "v0.1.12"). If the sidebar shows an older number than the download, you're still running an old copy: close the app, run the new installer (or the new portable file), and open it again.
+
 The files aren't code-signed, so Windows SmartScreen may say *"Windows protected your PC"* the first time. Click **More info → Run anyway**.
 
 The app window uses the Microsoft Edge WebView2 Runtime, which Windows 10 and 11 normally already have. If it's missing, the app opens in your web browser instead and tells you what to install.

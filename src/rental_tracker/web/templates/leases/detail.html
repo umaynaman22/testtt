@@ -39,9 +39,18 @@
       </form>
     </div>
 
-    {% if fill %}
+    {% if fill or unbilled %}
     <div class="card" id="fill">
       <h2>Fill in past rent</h2>
+      {% if unbilled %}
+      <p class="small muted" style="margin-top:0">They moved in on {{ moved_in|fdate }}, but rent is only billed from {{ unbilled|fdate }}.
+        Bill the months in between first; then you can mark them as paid.</p>
+      <form method="post" action="{{ url_for('leases.bill_from_move_in', lease_id=lease.id) }}"
+            data-confirm="Bill rent for every month since {{ moved_in|fdate }}?" style="margin-bottom:12px">
+        {{ m.csrf() }}<button class="btn">Bill rent since {{ moved_in|fdate }}</button>
+      </form>
+      {% endif %}
+      {% if fill %}
       <p class="small muted" style="margin-top:0">{{ fill.count }} rent bill{{ 's' if fill.count != 1 }} unpaid since {{ fill.since|fdate }} ({{ fill.total|money }}).
         If they already paid, this adds a payment for each month, dated on its due date, so the history is up to date.</p>
       <form method="post" action="{{ url_for('leases.fill_rent', lease_id=lease.id) }}"
@@ -53,6 +62,7 @@
         </div>
         <div class="actions"><button class="btn primary">Mark rent as paid</button></div>
       </form>
+      {% endif %}
     </div>
     {% endif %}
 

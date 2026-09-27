@@ -111,12 +111,17 @@ def detail(lease_id: int):
     fill = None
     if any(c.due_date < this_month for c, _ in unpaid):  # unpaid rent from past months
         fill = {"count": len(unpaid), "total": sum(a for _, a in unpaid), "since": unpaid[0][0].due_date}
+    # tenants added by older versions were billed only from the month they were added
+    billed_from = lease["billing_start_date"]
+    unbilled = billed_from if (billed_from and billed_from > _moved_in(lease)
+                               and lease["status"] in ("active", "month_to_month")) else None
     return render_template(
         "leases/detail.html", lease=lease, people=leases.lease_tenants(conn, lease_id),
         names=leases.tenant_names(conn, lease_id) or "Tenant",
         entries=list(reversed(entries)), summary=ledger.lease_summary(conn, lease_id, today()),
         last_payment=payments[-1] if payments else None,
-        methods=options(ledger.PAYMENT_METHODS, ledger.METHOD_LABELS), fill=fill, values={})
+        methods=options(ledger.PAYMENT_METHODS, ledger.METHOD_LABELS), fill=fill, unbilled=unbilled,
+        moved_in=_moved_in(lease), values={})
 
 
 def _back(lease_id: int, anchor: str = ""):
@@ -135,6 +140,19 @@ def payment(lease_id: int):
     if r["done"] and f.bool("print_receipt"):
         return redirect(url_for("rentday.receipt", payment_id=r["id"]))
     return _back(lease_id, "history")
+
+
+@bp.route("/leases/<int:lease_id>/bill-from-move-in", methods=["POST"])
+def bill_from_move_in(lease_id: int):
+    """Bill the months between the move-in date and when billing started (tenants added by older versions)."""
+    with attempt() as r:
+        lease = leases.get_lease(db(), lease_id)
+        leases.bill_from_move_in(db(), lease_id, _moved_in(lease), today())
+        r["from"] = _moved_in(lease)
+    if r["done"]:
+        flash("Rent is now billed from the move-in date. If they already paid those months, "
+              "use “Mark rent as paid” below.", "ok")
+    return _back(lease_id, "fill")
 
 
 @bp.route("/leases/<int:lease_id>/fill-rent", methods=["POST"])

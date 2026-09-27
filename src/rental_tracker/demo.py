@@ -66,10 +66,11 @@ def build_demo(data: DataDir, today: date | None = None, properties: int = 60, s
                 people.append((tid, "primary" if k == 0 else "co_tenant"))
             start = today - timedelta(days=rnd.randint(40, 1100))
             start = start.replace(day=1) if rnd.random() < .8 else start
+            start = max(start, billing_start)  # six months of history is plenty for a demo
             rent = market - rnd.choice([0, 0, 500_00, 1000_00, 1500_00])
             lid = leases.create_lease(
                 conn, unit_id=unit_id, tenants=people, start=start.isoformat(), end=None, rent_cents=rent,
-                today=today, billing_start=max(start, billing_start).isoformat(),
+                today=today,
                 late_fee_type="flat", late_fee_flat_cents=500_00,
                 late_fee_percent_bp=500, late_fee_grace_days=5, move_in_date=start.isoformat())
             lease_ids.append((lid, rent))
