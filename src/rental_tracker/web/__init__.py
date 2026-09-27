@@ -32,6 +32,7 @@ class AppState:
     today: Callable[[], date]
     lock: threading.Lock = field(default_factory=threading.Lock)
     last_catch_up: date | None = None
+    on_quit: Callable[[], object] | None = None  # set by the launcher
 
 
 def state() -> AppState:
@@ -149,7 +150,8 @@ def create_app(data: DataDir, *, launch_token: str | None = None,
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(32)
         return {"csrf_token": session["csrf"], "today": today(), "version": __version__,
-                "now": datetime.now()}
+                "now": datetime.now(), "can_quit": state().on_quit is not None,
+                "in_window": bool(session.get("in_window"))}
 
     @app.errorhandler(400)
     @app.errorhandler(404)

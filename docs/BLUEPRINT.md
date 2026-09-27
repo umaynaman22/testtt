@@ -603,7 +603,7 @@ testtt/
     └── web/                     # every page renders, security checks, full workflows
 ```
 
-Planned: `services/bank_import.py`, `services/letters.py`, loans and amortization, and `packaging/` (PyInstaller spec, Inno Setup script).
+Also `packaging/` (PyInstaller spec, Inno Setup script, icon) and `.github/workflows/windows-build.yml`. Planned: `services/bank_import.py`, `services/letters.py`, loans and amortization.
 
 **Rule:** `domain/` never imports from `services/` or `web/`, and never reads the clock or the database. This keeps the money logic easy to test.
 
@@ -687,4 +687,6 @@ The app in this repository implements phases 0–3 of the roadmap, plus parts of
 
 - **Phase 4:** work orders, inspections, letter templates and batch letters, the communication log, and recurring expenses.
 - **Phase 5:** bank import and reconciliation, loans and amortization UI (the P&L already reads `loan_payments`), insurance policies UI, depreciation, owner statements and mileage log UI.
-- **Phase 6:** installer packaging, password lock, SQLCipher, multi-user office mode, and an encrypted off-site backup archive.
+- **Phase 6:** password lock, SQLCipher, multi-user office mode, and an encrypted off-site backup archive.
+
+**Windows packaging (built):** GitHub Actions builds a per-user installer (Inno Setup) and a portable single-file `.exe` (PyInstaller) on every push. The build runs the tests on Windows, self-tests both builds (bundled files, SQLite FTS5, the WebView2 app window), and smoke-tests the installed app with demo data. See `packaging/` and `.github/workflows/windows-build.yml`.

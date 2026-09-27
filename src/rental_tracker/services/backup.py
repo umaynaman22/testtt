@@ -163,12 +163,16 @@ def copy_to_external(conn: sqlite3.Connection, data: DataDir, backup: Path,
     return True
 
 
+def _readonly_uri(path: Path) -> str:
+    return path.resolve().as_uri() + "?mode=ro"
+
+
 def validate_backup(path: Path) -> int:
     """Return the backup's schema version, or raise ServiceError if it is unusable."""
     if not path.is_file():
         raise ServiceError("Backup file not found")
     try:
-        src = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        src = sqlite3.connect(_readonly_uri(path), uri=True)
         try:
             ok = src.execute("PRAGMA integrity_check").fetchone()[0]
             version = src.execute("PRAGMA user_version").fetchone()[0]
@@ -190,7 +194,7 @@ def restore_backup(conn: sqlite3.Connection, data: DataDir, path: Path) -> Path:
     """Replace the live database with a backup. Returns the safety copy taken first."""
     validate_backup(path)
     safety = create_backup(conn, data, "snapshots", "pre-restore")
-    src = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    src = sqlite3.connect(_readonly_uri(path), uri=True)
     try:
         src.backup(conn)
     finally:

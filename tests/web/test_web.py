@@ -205,3 +205,22 @@ def test_security_headers_and_csv_safety(client):
     from rental_tracker.services.common import csv_safe
     assert csv_safe("=HYPERLINK(\"x\")") == "'=HYPERLINK(\"x\")"
     assert csv_safe("-12.50") == "-12.50" and csv_safe("Ann") == "Ann"
+
+
+def test_quit_button(app, client):
+    token = csrf(client)
+    assert client.post("/quit", data={"csrf_token": token}).status_code == 404  # not started by the launcher
+    called = []
+    app.extensions["rental_tracker"].on_quit = lambda: called.append(True)
+    assert "Quit" in client.get("/").get_data(as_text=True)
+    resp = client.post("/quit", data={"csrf_token": token})
+    assert resp.status_code == 200 and "has closed" in resp.get_data(as_text=True)
+    import time
+    time.sleep(0.5)
+    assert called == [True]
+
+
+def test_window_mode_shows_back_button(app):
+    c = app.test_client()
+    c.get(f"/auth?token={TOKEN}&window=1")
+    assert "data-back" in c.get("/").get_data(as_text=True)

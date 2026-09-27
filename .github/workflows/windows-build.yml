@@ -1,0 +1,124 @@
+name: Windows build
+
+# Builds RentalTracker-Setup-<version>.exe (installer) and RentalTracker-Portable-<version>.exe.
+# Download them from the run's "Artifacts" section. Pushing a tag like v0.1.0 also
+# attaches them to a GitHub release.
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: packaging/requirements-build.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r packaging/requirements-build.txt
+          pip install ".[desktop,dev]"
+          $v = python -c "import rental_tracker; print(rental_tracker.__version__)"
+          "APP_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run tests on Windows
+        run: pytest -q
+
+      - name: Build the app with PyInstaller
+        run: pyinstaller packaging/rental_tracker.spec --noconfirm --clean
+
+      - name: Self-test both builds
+        run: |
+          foreach ($exe in @("dist\RentalTracker\RentalTracker.exe", "dist\RentalTracker-Portable.exe")) {
+            $report = Join-Path $env:RUNNER_TEMP ("selftest-" + [IO.Path]::GetFileNameWithoutExtension($exe) + ".txt")
+            $p = Start-Process -FilePath $exe -ArgumentList @("--self-test", $report) -Wait -PassThru
+            Write-Host "== $exe (exit $($p.ExitCode))"
+            Get-Content $report
+            if ($p.ExitCode -ne 0) { throw "self-test failed for $exe" }
+            if (-not (Select-String -Path $report -Pattern "window renderer edgechromium" -Quiet)) {
+              throw "the app window (Edge WebView2) is not available in $exe"
+            }
+          }
+
+      - name: Smoke test (start with demo data, open pages, quit)
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP "rt-smoke"
+          $urlFile = Join-Path $env:RUNNER_TEMP "rt-url.txt"
+          $p = Start-Process -FilePath "dist\RentalTracker\RentalTracker.exe" -PassThru `
+                 -ArgumentList @("--no-open", "--demo", "--port", "8765", "--data-dir", $data, "--url-file", $urlFile)
+          $base = "http://127.0.0.1:8765"
+          $up = $false
+          for ($i = 0; $i -lt 90 -and -not $up; $i++) {
+            Start-Sleep -Seconds 1
+            try { $up = (Invoke-WebRequest "$base/static/app.css" -UseBasicParsing).StatusCode -eq 200 } catch {}
+          }
+          if (-not $up) { Get-Content (Join-Path $data "logs\app.log") -ErrorAction SilentlyContinue; throw "the app did not start" }
+          $r = Invoke-WebRequest "$base/" -SkipHttpErrorCheck
+          if ($r.StatusCode -ne 403) { throw "expected the locked page without the launch token, got $($r.StatusCode)" }
+          $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          Invoke-WebRequest (Get-Content $urlFile -Raw).Trim() -WebSession $s | Out-Null
+          foreach ($page in @("/", "/rent-day", "/properties", "/leases/1", "/reports/schedule-e", "/backups")) {
+            $r = Invoke-WebRequest "$base$page" -WebSession $s -SkipHttpErrorCheck
+            Write-Host "$page -> $($r.StatusCode)"
+            if ($r.StatusCode -ne 200) { throw "$page failed" }
+          }
+          $csrf = [regex]::Match($r.Content, '"X-CSRF-Token": "([^"]+)"').Groups[1].Value
+          Invoke-WebRequest "$base/quit" -Method Post -Body @{ csrf_token = $csrf } -WebSession $s | Out-Null
+          if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force; throw "the app did not quit" }
+          if (-not (Get-ChildItem (Join-Path $data "backups\snapshots") -Filter "*exit.db")) { throw "no backup on exit" }
+          Write-Host "Smoke test passed"
+
+      - name: Build the installer (Inno Setup)
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DAppVersion=$env:APP_VERSION" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+
+      - name: Collect files
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item "dist\RentalTracker-Setup-$env:APP_VERSION.exe" out\
+          Copy-Item dist\RentalTracker-Portable.exe "out\RentalTracker-Portable-$env:APP_VERSION.exe"
+          Get-ChildItem out\*.exe | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Out-File out\SHA256SUMS.txt -Encoding ascii
+          Get-ChildItem out | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RentalTracker-windows-${{ env.APP_VERSION }}
+          path: out/
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*

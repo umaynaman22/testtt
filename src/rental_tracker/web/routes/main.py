@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hmac
+import threading
 
 from flask import Blueprint, abort, redirect, render_template, request, send_file, session, url_for
 
@@ -29,8 +30,19 @@ def auth():
     if token and hmac.compare_digest(request.args.get("token", ""), token):
         session.clear()
         session["auth"] = True
+        session["in_window"] = request.args.get("window") == "1"
         return redirect(url_for("main.dashboard"))
     return render_template("locked.html"), 403
+
+
+@bp.route("/quit", methods=["POST"])
+def quit_app():
+    """Close the app (a backup is taken on the way out)."""
+    on_quit = state().on_quit
+    if on_quit is None:
+        abort(404)
+    threading.Timer(0.3, on_quit).start()
+    return render_template("closed.html")
 
 
 @bp.route("/")
