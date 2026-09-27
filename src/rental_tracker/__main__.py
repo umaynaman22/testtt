@@ -205,7 +205,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         webview.settings["ALLOW_DOWNLOADS"] = True                   # CSV exports and templates
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False   # keep receipts/documents in the app
-        window = webview.create_window("Rental Tracker", url + "&window=1", width=1360, height=880,
+        width, height = 1360, 880
+        try:  # fit smaller screens (e.g. 1366x768 laptops)
+            screen = webview.screens[0]
+            width, height = min(width, int(screen.width * 0.94)), min(height, int(screen.height * 0.9))
+        except Exception:
+            pass
+        window = webview.create_window("Rental Tracker", url + "&window=1", width=width, height=height,
                                        min_size=(900, 600), text_select=True, zoomable=True)
         state.on_quit = window.destroy
         try:
