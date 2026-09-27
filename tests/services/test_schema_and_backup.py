@@ -5,7 +5,6 @@ import pytest
 
 from rental_tracker import db as dbmod
 from rental_tracker.services import backup, ledger
-from rental_tracker.services.common import ServiceError
 from tests.conftest import make_lease
 
 
@@ -28,23 +27,20 @@ def test_constraints(conn, owner_id):
                      (unit,))
 
 
-def test_backup_restore_round_trip(conn, data_dir, owner_id):
+def test_backup_is_a_complete_copy(conn, data_dir, owner_id):
+    """A backup can be copied over rental.db as is: one self-contained, readable file."""
     lid = make_lease(conn, owner_id)
-    path = backup.create_backup(conn, data_dir, "snapshots", "test")
     ledger.record_payment(conn, lid, 5000, "2026-01-02", "cash")
-    assert conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 1
-    safety = backup.restore_backup(conn, data_dir, path)
-    assert conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 0
-    assert safety.exists() and "pre-restore" in safety.name
-    assert not path.with_suffix(".db-wal").exists()
-
-
-def test_restore_rejects_garbage(conn, data_dir):
-    bad = data_dir.backups / "snapshots" / "rental-bad.db"
-    bad.parent.mkdir(parents=True, exist_ok=True)
-    bad.write_bytes(b"not a database" * 100)
-    with pytest.raises(ServiceError):
-        backup.restore_backup(conn, data_dir, bad)
+    path = backup.create_backup(conn, data_dir, "snapshots", "test")
+    ledger.record_payment(conn, lid, 7000, "2026-01-03", "cash")  # after the backup
+    assert not path.with_suffix(".db-wal").exists() and not path.with_suffix(".tmp").exists()
+    copy = sqlite3.connect(str(path))
+    try:
+        assert copy.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert copy.execute("SELECT COUNT(*), SUM(amount_cents) FROM payments").fetchone() == (1, 5000)
+        assert copy.execute("PRAGMA user_version").fetchone()[0] == dbmod.latest_version()
+    finally:
+        copy.close()
 
 
 def test_scheduled_backups_and_rotation(conn, data_dir, tmp_path):

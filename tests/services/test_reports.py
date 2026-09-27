@@ -10,8 +10,9 @@ def test_optional_fields_everywhere(conn):
     pid = portfolio.save_property(conn, None, {})
     prop = portfolio.get_property(conn, pid)
     assert prop["name"] == "Unit 1" and prop["code"] == "Unit 1"
-    pid2 = portfolio.save_property(conn, None, {"name": "12 Maple St"}, unit_labels=portfolio.parse_unit_labels("3"))
-    assert [u["unit_label"] for u in portfolio.units_for_property(conn, pid2)] == ["1", "2", "3"]
+    pid2 = portfolio.save_property(conn, None, {"name": "12 Maple St"}, unit_labels=["1", "2", "3"])
+    assert [r[0] for r in conn.execute("SELECT unit_label FROM units WHERE property_id = ? ORDER BY id", (pid2,))] \
+        == ["1", "2", "3"]
     assert portfolio.save_property(conn, None, {"name": "12 Maple St"}) != pid2  # same name is fine
     assert portfolio.get_property(conn, pid2)["code"] == "12 Maple St"
     tid = tenants.save_tenant(conn, None, {})
@@ -23,7 +24,7 @@ def test_flatten_units_makes_one_unit_per_property(conn, owner_id):
     """The app lists units, not properties; older multi-unit properties are split up."""
     building = portfolio.save_property(conn, None, {"name": "251 Osmena St", "city": "Cebu City"},
                                        unit_labels=["1", "2", "3"])
-    units = {u["unit_label"]: u["id"] for u in portfolio.units_for_property(conn, building)}
+    units = dict(conn.execute("SELECT unit_label, id FROM units WHERE property_id = ?", (building,)).fetchall())
     tid = tenants.save_tenant(conn, None, {"first_name": "Ana"})
     lid = leases.create_lease(conn, unit_id=units["2"], tenants=[(tid, "primary")], start="2026-01-01", end=None,
                               rent_cents=900000, today=TODAY)

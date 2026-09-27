@@ -1,4 +1,4 @@
-"""Global search over properties, units and tenants (SQLite FTS5)."""
+"""Global search over units (properties) and tenants (SQLite FTS5)."""
 from __future__ import annotations
 
 import re
@@ -24,12 +24,6 @@ def rebuild(conn: sqlite3.Connection) -> None:
                          "(SELECT group_concat(t.name, ' ') FROM property_tags pt "
                          "JOIN tags t ON t.id = pt.tag_id WHERE pt.property_id = p.id)") + """
           FROM properties p""")
-    conn.execute("""
-        INSERT INTO search_index(entity_type, entity_id, title, body)
-        SELECT 'unit', u.id, p.code || ' · ' || u.unit_label,
-               """ + _join("p.name", "p.address_line1", "u.notes") + """
-          FROM units u JOIN properties p ON p.id = u.property_id
-         WHERE (SELECT COUNT(*) FROM units x WHERE x.property_id = u.property_id) > 1""")
     conn.execute("""
         INSERT INTO search_index(entity_type, entity_id, title, body)
         SELECT 'tenant', id, first_name || ' ' || last_name,

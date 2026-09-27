@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import calendar
 import re
-from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import date
 
 _PERIOD_RE = re.compile(r"(\d{4})-(\d{2})")
 
@@ -54,22 +53,6 @@ def next_period(period: str) -> str:
     return add_periods(period, 1)
 
 
-def iter_periods(first: str, last: str) -> Iterator[str]:
-    p = first
-    while p <= last:
-        yield p
-        p = next_period(p)
-
-
 def due_date(period: str, due_day: int) -> date:
     y, m = parse_period(period)
     return date(y, m, min(due_day, days_in_period(period)))
-
-
-def add_months(d: date, n: int) -> date:
-    p = add_periods(period_of(d), n)
-    return due_date(p, d.day)
-
-
-def add_days(d: date, n: int) -> date:
-    return d + timedelta(days=n)

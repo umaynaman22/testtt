@@ -79,9 +79,3 @@ def detail(pid: int):
                            tenancies=_current_tenancies(conn, pid).get(pid, []),
                            payments=ledger.list_payments(conn, property_ids=[pid], include_voided=False, limit=10),
                            past=tenants.tenancies(conn, today=today(), status="past", property_id=pid))
-
-
-@bp.route("/units/<int:unit_id>")
-def unit_detail(unit_id: int):
-    """Old links to a unit go to its page."""
-    return redirect(url_for("properties.detail", pid=portfolio.get_unit(db(), unit_id)["property_id"]))

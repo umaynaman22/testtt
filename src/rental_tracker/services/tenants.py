@@ -1,7 +1,6 @@
 """Tenant records."""
 from __future__ import annotations
 
-import re
 import sqlite3
 from datetime import date
 from typing import Any
@@ -11,7 +10,6 @@ from .common import ServiceError, audit, diff, row_or_error
 
 FIELDS = ("first_name", "last_name", "email", "phone", "alt_phone", "emergency_contact_name",
           "emergency_contact_phone", "forwarding_address", "external_ref", "notes")
-_ID_SUFFIX_RE = re.compile(r"#(\d+)\s*$")
 
 
 def get_tenant(conn: sqlite3.Connection, tid: int) -> sqlite3.Row:
@@ -62,56 +60,6 @@ def split_name(full: str | None) -> tuple[str, str]:
     return full, ""
 
 
-def tenant_label(row: sqlite3.Row) -> str:
-    return f"{row['last_name']}, {row['first_name']} #{row['id']}"
-
-
-def tenant_choices(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    return conn.execute("SELECT id, first_name, last_name FROM tenants "
-                        "ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE").fetchall()
-
-
-def resolve_tenant(conn: sqlite3.Connection, text: str, phone: str | None = None,
-                   email: str | None = None) -> int | None:
-    """'Lee, Ann #12' -> existing tenant 12; 'Ann Lee' -> a new tenant. Blank -> None."""
-    text = (text or "").strip()
-    if not text:
-        return None
-    m = _ID_SUFFIX_RE.search(text)
-    if m:
-        return get_tenant(conn, int(m.group(1)))["id"]
-    first, last = split_name(text)
-    return save_tenant(conn, None, {"first_name": first, "last_name": last,
-                                    "phone": phone or None, "email": email or None})
-
-
-def list_tenants(conn: sqlite3.Connection, *, q: str = "", status: str = "current") -> list[sqlite3.Row]:
-    where, params = [], []
-    if q:
-        where.append("(t.first_name || ' ' || t.last_name LIKE ? OR t.last_name || ', ' || t.first_name LIKE ? "
-                     "OR t.email LIKE ? OR t.phone LIKE ?)")
-        params += [f"%{q}%"] * 4
-    current = ("EXISTS (SELECT 1 FROM lease_tenants lt JOIN leases l ON l.id = lt.lease_id "
-               "WHERE lt.tenant_id = t.id AND l.status IN ('active','month_to_month','future'))")
-    if status == "current":
-        where.append(current)
-    elif status == "past":
-        where.append("NOT " + current)
-    return conn.execute(f"""
-        SELECT t.*,
-               (SELECT p.code || ' · ' || u.unit_label FROM lease_tenants lt
-                  JOIN leases l ON l.id = lt.lease_id JOIN units u ON u.id = l.unit_id
-                  JOIN properties p ON p.id = u.property_id
-                 WHERE lt.tenant_id = t.id ORDER BY l.status IN ('active','month_to_month') DESC,
-                       l.start_date DESC LIMIT 1) AS latest_unit,
-               (SELECT l.id FROM lease_tenants lt JOIN leases l ON l.id = lt.lease_id
-                 WHERE lt.tenant_id = t.id ORDER BY l.status IN ('active','month_to_month') DESC,
-                       l.start_date DESC LIMIT 1) AS latest_lease_id
-          FROM tenants t
-         {"WHERE " + " AND ".join(where) if where else ""}
-         ORDER BY t.last_name COLLATE NOCASE, t.first_name COLLATE NOCASE""", params).fetchall()
-
-
 def tenant_leases(conn: sqlite3.Connection, tid: int) -> list[sqlite3.Row]:
     return conn.execute("""
         SELECT l.*, lt.role, p.code AS property_code, p.id AS property_id, u.unit_label,
@@ -120,10 +68,6 @@ def tenant_leases(conn: sqlite3.Connection, tid: int) -> list[sqlite3.Row]:
           JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id
           LEFT JOIN v_lease_balances b ON b.lease_id = l.id
          WHERE lt.tenant_id = ? ORDER BY l.start_date DESC""", (tid,)).fetchall()
-
-
-STATE_LABELS = {"late": "Late", "owes": "Owes (not late yet)", "paid": "Paid up", "credit": "Has credit",
-                "none": "No unit"}
 
 
 def tenancies(conn: sqlite3.Connection, *, today: date, status: str = "current", q: str = "",

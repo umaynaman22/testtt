@@ -67,7 +67,7 @@ def prepare(data: DataDir) -> None:
         check = conn.execute("PRAGMA quick_check").fetchone()[0]
         if check != "ok":
             raise SystemExit(f"The database failed its integrity check ({check}). Restore a backup from "
-                             f"{data.backups} (Backups page, or copy a backup over rental.db).")
+                             f"{data.backups}: close the app and copy a backup over rental.db.")
         with dbmod.transaction(conn):
             search.rebuild(conn)
         result = startup.run_catch_up(conn, datetime.now().date())

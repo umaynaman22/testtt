@@ -9,7 +9,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
 
-ORDERS = ("oldest_first_rent_before_fees", "oldest_first")
 FEE_TYPES = frozenset({"late_fee", "nsf_fee", "legal_fee"})
 BUCKETS = ("current", "1_30", "31_60", "61_90", "90_plus")
 
@@ -71,10 +70,6 @@ def allocate(charges: Iterable[LedgerCharge], payments: Iterable[LedgerPayment],
         result.unpaid[c.id] = left[c.id] - applied
     result.unapplied_credit = funds
     return result
-
-
-def balance(charges: Iterable[LedgerCharge], payments: Iterable[LedgerPayment]) -> int:
-    return sum(c.amount_cents for c in charges) - sum(p.amount_cents for p in payments)
 
 
 def bucket_for(days_past_due: int) -> str:

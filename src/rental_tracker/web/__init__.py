@@ -9,7 +9,7 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from flask import Flask, abort, current_app, flash, g, render_template, request, session
@@ -150,8 +150,7 @@ def create_app(data: DataDir, *, launch_token: str | None = None,
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(32)
         return {"csrf_token": session["csrf"], "today": today(), "version": __version__,
-                "now": datetime.now(), "can_quit": state().on_quit is not None,
-                "in_window": bool(session.get("in_window"))}
+                "can_quit": state().on_quit is not None}
 
     @app.errorhandler(400)
     @app.errorhandler(404)

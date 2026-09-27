@@ -1,8 +1,7 @@
-"""Backups, rotation and restore (BLUEPRINT §11.2).
+"""Automatic backups and rotation (BLUEPRINT §11.2).
 
 Backups use SQLite's online backup API, so they are consistent even while the
-app is running. Restores copy a backup *into* the live database the same way,
-so no file swapping or restart is needed.
+app is running. To restore one, close the app and copy it over rental.db.
 """
 from __future__ import annotations
 
@@ -12,9 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from .. import db as dbmod
 from ..config import DataDir
-from .common import ServiceError, audit, get_int_setting, get_setting, set_setting
+from .common import get_int_setting, get_setting, set_setting
 
 KINDS = ("daily", "weekly", "monthly", "snapshots")
 SNAPSHOTS_KEPT = 30
@@ -25,7 +23,6 @@ class BackupInfo:
     path: Path
     kind: str
     created: datetime
-    size_bytes: int
 
     @property
     def name(self) -> str:
@@ -75,8 +72,7 @@ def list_backups(data: DataDir) -> list[BackupInfo]:
         if not folder.is_dir():
             continue
         for p in folder.glob("rental-*.db"):
-            st = p.stat()
-            out.append(BackupInfo(p, kind, _created(p, st.st_mtime), st.st_size))
+            out.append(BackupInfo(p, kind, _created(p, p.stat().st_mtime)))
     return sorted(out, key=lambda b: b.created, reverse=True)
 
 
@@ -161,60 +157,3 @@ def copy_to_external(conn: sqlite3.Connection, data: DataDir, backup: Path,
         old.unlink(missing_ok=True)
     set_setting(conn, "last_external_backup", (now or datetime.now()).isoformat(timespec="seconds"))
     return True
-
-
-def _readonly_uri(path: Path) -> str:
-    return path.resolve().as_uri() + "?mode=ro"
-
-
-def validate_backup(path: Path) -> int:
-    """Return the backup's schema version, or raise ServiceError if it is unusable."""
-    if not path.is_file():
-        raise ServiceError("Backup file not found")
-    try:
-        src = sqlite3.connect(_readonly_uri(path), uri=True)
-        try:
-            ok = src.execute("PRAGMA integrity_check").fetchone()[0]
-            version = src.execute("PRAGMA user_version").fetchone()[0]
-            has_tables = src.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('leases','charges','payments')"
-            ).fetchone()[0]
-        finally:
-            src.close()
-    except sqlite3.DatabaseError as e:
-        raise ServiceError(f"This is not a valid Rental Tracker backup ({e})") from None
-    if ok != "ok" or has_tables != 3:
-        raise ServiceError("The backup failed its integrity check and cannot be restored")
-    if version > dbmod.latest_version():
-        raise ServiceError("The backup was made by a newer version of the app")
-    return version
-
-
-def restore_backup(conn: sqlite3.Connection, data: DataDir, path: Path) -> Path:
-    """Replace the live database with a backup. Returns the safety copy taken first."""
-    validate_backup(path)
-    safety = create_backup(conn, data, "snapshots", "pre-restore")
-    src = sqlite3.connect(_readonly_uri(path), uri=True)
-    try:
-        src.backup(conn)
-    finally:
-        src.close()
-    dbmod.migrate(conn)
-    audit(conn, "restore", changes={"from": path.name, "safety_copy": safety.name})
-    return safety
-
-
-def delete_backup(data: DataDir, name: str) -> str:
-    path = resolve_backup(data, name)
-    if len(list_backups(data)) <= 1:
-        raise ServiceError("This is your only backup, so it can't be deleted.")
-    path.unlink()
-    return path.name
-
-
-def resolve_backup(data: DataDir, name: str) -> Path:
-    """Find a backup by file name, refusing anything outside the backups folder."""
-    for b in list_backups(data):
-        if b.name == name:
-            return b.path
-    raise ServiceError("Backup not found")

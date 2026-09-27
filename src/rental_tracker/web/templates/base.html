@@ -9,7 +9,7 @@
 <script src="{{ url_for('static', filename='vendor/htmx.min.js') }}" defer></script>
 <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </head>
-<body class="{{ 'in-window' if in_window }}" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
 {% macro nav(endpoint, text, prefixes=None, count=None) -%}
   {%- set prefixes = prefixes or [endpoint] -%}
   {%- set ns = namespace(active=false) -%}

@@ -32,14 +32,6 @@ class DataDir:
         return self.root / "backups"
 
     @property
-    def exports(self) -> Path:
-        return self.root / "exports"
-
-    @property
-    def imports(self) -> Path:
-        return self.root / "imports"
-
-    @property
     def logs(self) -> Path:
         return self.root / "logs"
 
@@ -48,6 +40,6 @@ class DataDir:
         return self.root / "app.lock"
 
     def ensure(self) -> DataDir:
-        for d in (self.root, self.documents, self.backups, self.exports, self.imports, self.logs):
+        for d in (self.root, self.backups, self.logs):
             d.mkdir(parents=True, exist_ok=True)
         return self

@@ -61,7 +61,7 @@ def test_every_page_renders(app, client):
     pid, unit, lease, tid, pay = (q(app, f"SELECT id FROM {t} LIMIT 1")[0]
                                   for t in ("properties", "units", "leases", "tenants", "payments"))
     pages = ["/", "/properties", "/properties?sort=balance", "/properties/new", f"/properties/{pid}",
-             f"/properties/{pid}/edit", f"/units/{unit}", "/tenants", "/tenants?q=lee",
+             f"/properties/{pid}/edit", "/tenants", "/tenants?q=lee",
              "/tenants?format=csv", "/tenants/new", f"/tenants/new?unit_id={unit}", f"/tenants/{tid}",
              f"/tenants/{tid}/edit", "/rent-day", "/rent-day?period=2026-08&show=unpaid", "/late", "/payments",
              "/payments?format=csv", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=rizal",
@@ -347,8 +347,6 @@ def test_units_not_properties(app, client):
     page = client.get(f"/properties/{pid}").get_data(as_text=True)
     assert "Add a unit" not in page and "No tenant yet" in page and "Add tenant" in page
     assert client.post(f"/properties/{pid}/units", data={"csrf_token": token}).status_code in (404, 405)
-    unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
-    assert client.get(f"/units/{unit}").headers["Location"].endswith(f"/properties/{pid}")
     r = client.post(f"/delete/property/{pid}", data={"csrf_token": token}, follow_redirects=True)
     assert "Deleted Unit 2B Sunrise Apartments" in r.get_data(as_text=True)
     assert q(app, f"SELECT COUNT(*) FROM properties WHERE id = {pid}") == [0]

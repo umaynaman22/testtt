@@ -2,17 +2,15 @@ from datetime import date
 
 import pytest
 
-from rental_tracker.domain.periods import add_months, add_periods, due_date, iter_periods, period_end, parse_period
+from rental_tracker.domain.periods import add_periods, due_date, period_end, parse_period
 from rental_tracker.domain.proration import occupied_days, prorate
 
 
 def test_period_math():
     assert add_periods("2026-12", 1) == "2027-01"
     assert add_periods("2026-01", -1) == "2025-12"
-    assert list(iter_periods("2026-11", "2027-02")) == ["2026-11", "2026-12", "2027-01", "2027-02"]
     assert period_end("2028-02") == date(2028, 2, 29)
     assert due_date("2026-02", 28) == date(2026, 2, 28)
-    assert add_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
     with pytest.raises(ValueError):
         parse_period("2026-13")
 

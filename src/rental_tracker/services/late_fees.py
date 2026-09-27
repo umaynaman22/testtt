@@ -11,7 +11,6 @@ from datetime import date, timedelta
 
 from ..domain.allocation import unpaid_for_period
 from ..domain.late_fees import LateFeeTerms, is_assessable, last_grace_day, late_fee_amount
-from ..domain.periods import parse_date
 from . import ledger
 from .common import ServiceError, audit, books_locked_through, get_int_setting, get_setting, now_utc
 
@@ -108,9 +107,3 @@ def auto_post(conn: sqlite3.Connection, today: date) -> int:
     if cands:
         audit(conn, "late_fees_auto", changes={"count": len(cands)})
     return len(cands)
-
-
-def parse_key(key: str) -> tuple[int, str]:
-    lease_id, period = key.split(":", 1)
-    parse_date(period + "-01")
-    return int(lease_id), period

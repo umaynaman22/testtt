@@ -22,7 +22,7 @@ def conn(data_dir):
 
 @pytest.fixture
 def owner_id(conn):
-    return portfolio.save_owner(conn, None, {"name": "Test Owner LLC", "entity_type": "llc"})
+    return portfolio.default_owner_id(conn)
 
 
 def make_property(conn, owner_id, code="P-1", units=None):

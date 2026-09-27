@@ -37,9 +37,10 @@ def test_billing_start_skips_history(conn, owner_id):
 
 
 def test_recurring_charges(conn, owner_id):
+    """Add-ons made by older versions keep being billed."""
     lid = make_lease(conn, owner_id, start="2026-01-01", end=None)
-    leases.add_recurring_charge(conn, lid, charge_type="pet_rent", description="Pet rent", amount_cents=3500,
-                                start="2026-02-01")
+    conn.execute("INSERT INTO lease_recurring_charges(lease_id, charge_type, description, amount_cents, start_date) "
+                 "VALUES (?, 'pet_rent', 'Pet rent', 3500, '2026-02-01')", (lid,))
     rent_posting.post_rent(conn, date(2026, 3, 1))
     rows = conn.execute("SELECT period, amount_cents FROM charges WHERE charge_type = 'pet_rent' ORDER BY period").fetchall()
     assert [tuple(r) for r in rows] == [("2026-02", 3500), ("2026-03", 3500)]

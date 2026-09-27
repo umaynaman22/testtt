@@ -11,14 +11,8 @@ from ..services.ledger import method_name
 
 REPORT_LINKS = {
     "property": ("properties.detail", "pid"),
-    "unit": ("properties.unit_detail", "unit_id"),
     "lease": ("leases.detail", "lease_id"),
-    "tenant": ("tenants.detail", "tid"),
 }
-
-STATUS_CLASS = {"active": "ok", "month_to_month": "info", "future": "info", "draft": "muted",
-                "ended": "muted", "terminated": "bad", "occupied": "ok", "vacant": "warn",
-                "sold": "muted", "archived": "muted", "offline": "warn"}
 
 
 def money(cents, blank_zero: bool = False) -> str:
@@ -57,12 +51,6 @@ def pay_method(payment) -> str:
     return method_name(payment["method"], payment["method_other"] if "method_other" in keys else None)
 
 
-def badge(status) -> Markup:
-    if not status:
-        return Markup("")
-    return Markup(f'<span class="badge {STATUS_CLASS.get(status, "muted")}">{escape(label(status))}</span>')
-
-
 def cell(row: dict, col) -> Markup:
     v = row.get(col.key)
     if col.kind == "money":
@@ -72,10 +60,6 @@ def cell(row: dict, col) -> Markup:
         text, cls = fdate(v), "nowrap"
     elif col.kind == "pct":
         text, cls = pct(v), "num"
-    elif col.key == "unit_label":
-        text, cls = ("" if v in (None, "Main") else str(v)), ""
-    elif col.kind == "int":
-        text, cls = "" if v is None else f"{v:,}", "num"
     else:
         text, cls = "" if v is None else str(v), ""
     html = escape(text)
@@ -110,7 +94,6 @@ def register(app: Flask) -> None:
     app.add_template_filter(fdate)
     app.add_template_filter(pct)
     app.add_template_filter(label)
-    app.add_template_filter(badge)
     app.add_template_filter(pay_method)
     app.add_template_filter(cents_to_input, "input_money")
     app.jinja_env.globals.update(cell=cell, url_with=url_with, place=place)

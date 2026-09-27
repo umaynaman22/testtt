@@ -49,16 +49,6 @@ class Form:
             self._fail(f"{label} must be between {lo} and {hi}")
         return n
 
-    def num(self, name: str, label: str) -> float | None:
-        v = self.raw(name)
-        if not v:
-            return None
-        try:
-            return float(v)
-        except ValueError:
-            self._fail(f"{label} must be a number")
-            return None
-
     def money(self, name: str, label: str, required: bool = False) -> int | None:
         v = self.raw(name)
         if not v:

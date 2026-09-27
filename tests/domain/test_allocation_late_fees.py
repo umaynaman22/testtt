@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from hypothesis import given, strategies as st
 
-from rental_tracker.domain.allocation import (LedgerCharge, LedgerPayment, aging, allocate, balance,
+from rental_tracker.domain.allocation import (LedgerCharge, LedgerPayment, aging, allocate,
                                               oldest_unpaid_due, unpaid_for_period)
 from rental_tracker.domain.late_fees import LateFeeTerms, is_assessable, late_fee_amount
 
@@ -47,7 +47,7 @@ def test_as_of_ignores_later_money():
 def test_credits_count_as_funds():
     charges = [rent(1, "2026-01", D(2026, 1, 1)), LedgerCharge(2, "credit", -30000, D(2026, 1, 1))]
     assert allocate(charges, []).unpaid[1] == 70000
-    assert balance(charges, []) == 70000
+    assert sum(c.amount_cents for c in charges) == 70000
 
 
 def test_aging_buckets_and_credit():
@@ -88,7 +88,8 @@ def test_allocation_invariants(charges, payments):
     alloc = allocate(charges, payments)
     unpaid_total = sum(alloc.unpaid.values())
     # balance = what is still owed minus money not yet applied to anything
-    assert unpaid_total - alloc.unapplied_credit == balance(charges, payments)
+    assert unpaid_total - alloc.unapplied_credit == (sum(c.amount_cents for c in charges)
+                                                    - sum(p.amount_cents for p in payments))
     assert all(0 <= alloc.unpaid[c.id] <= c.amount_cents for c in charges if c.amount_cents > 0)
     assert unpaid_total == 0 or alloc.unapplied_credit == 0  # never both owed and holding credit
     a = aging(charges, payments, D(2027, 6, 1))

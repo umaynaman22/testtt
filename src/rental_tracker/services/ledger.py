@@ -1,4 +1,4 @@
-"""Tenant ledger: charges, payments and security deposits (BLUEPRINT §7.2, §7.6, §7.7)."""
+"""Tenant ledger: charges (rent, debts, late fees) and payments (BLUEPRINT §7.2, §7.6)."""
 from __future__ import annotations
 
 import sqlite3
@@ -9,17 +9,13 @@ from datetime import date
 from ..domain.allocation import LedgerCharge, LedgerPayment, aging, allocate, oldest_unpaid_due
 from ..domain.money import format_money
 from ..domain.periods import parse_date
-from .common import ServiceError, audit, ensure_open, get_setting, now_utc, row_or_error, set_setting
+from .common import ServiceError, audit, ensure_open, get_setting, row_or_error, set_setting
 
 CHARGE_TYPES = ("rent", "late_fee", "pet_rent", "parking", "storage", "utility", "damage",
                 "repair_billback", "nsf_fee", "legal_fee", "opening_balance", "credit", "other")
-MANUAL_CHARGE_TYPES = ("utility", "damage", "repair_billback", "late_fee", "nsf_fee", "legal_fee",
-                       "pet_rent", "parking", "storage", "rent", "other")
 PAYMENT_METHODS = ("cash", "check", "bank_transfer", "gcash", "other")
 METHOD_LABELS = {"cash": "Cash", "check": "Check", "bank_transfer": "Bank transfer", "gcash": "GCash",
                  "other": "Other", "app_transfer": "App transfer", "deposit_applied": "From deposit"}
-DEPOSIT_TYPES = ("received", "interest", "deduction", "refund", "applied_to_balance")
-DEPOSIT_OUTFLOWS = ("deduction", "refund", "applied_to_balance")
 
 
 def method_name(method: str | None, other: str | None = None) -> str:
@@ -79,8 +75,7 @@ def lease_summary(conn: sqlite3.Connection, lease_id: int, today: date) -> dict:
     order = payment_order(conn)
     ag = aging(charges, payments, today, order)
     oldest = oldest_unpaid_due(charges, payments, order)
-    return {"balance": lease_balance(conn, lease_id), "aging": ag, "oldest_unpaid_due": oldest,
-            "deposit_held": deposit_held(conn, lease_id)}
+    return {"balance": lease_balance(conn, lease_id), "aging": ag, "oldest_unpaid_due": oldest}
 
 
 def period_status(conn: sqlite3.Connection, period: str, lease_ids: Iterable[int] | None = None
@@ -138,7 +133,7 @@ def ledger_entries(conn: sqlite3.Connection, lease_id: int) -> list[dict]:
 # ---- charges ------------------------------------------------------------------
 
 def add_charge(conn: sqlite3.Connection, lease_id: int, charge_type: str | None, amount: int | None,
-               due: str | None, description: str | None = None, work_order_id: int | None = None) -> int:
+               due: str | None, description: str | None = None) -> int:
     charge_type = charge_type or "other"
     due = due or date.today().isoformat()
     if charge_type not in CHARGE_TYPES or charge_type == "credit":
@@ -147,38 +142,11 @@ def add_charge(conn: sqlite3.Connection, lease_id: int, charge_type: str | None,
     lease_row(conn, lease_id)
     ensure_open(conn, due)
     cur = conn.execute(
-        """INSERT INTO charges(lease_id, charge_type, source, description, amount_cents, due_date, work_order_id)
-           VALUES (?, ?, 'manual', ?, ?, ?, ?)""",
-        (lease_id, charge_type, description or None, amount, parse_date(due).isoformat(), work_order_id))
+        """INSERT INTO charges(lease_id, charge_type, source, description, amount_cents, due_date)
+           VALUES (?, ?, 'manual', ?, ?, ?)""",
+        (lease_id, charge_type, description or None, amount, parse_date(due).isoformat()))
     audit(conn, "insert", "charge", cur.lastrowid, {"lease_id": lease_id, "type": charge_type, "amount": amount})
     return cur.lastrowid
-
-
-def add_credit(conn: sqlite3.Connection, lease_id: int, amount: int | None, when: str | None,
-               description: str | None) -> int:
-    _positive(amount)
-    when = when or date.today().isoformat()
-    description = (description or "").strip() or "Credit"
-    lease_row(conn, lease_id)
-    ensure_open(conn, when)
-    cur = conn.execute(
-        """INSERT INTO charges(lease_id, charge_type, source, description, amount_cents, due_date)
-           VALUES (?, 'credit', 'manual', ?, ?, ?)""",
-        (lease_id, description.strip(), -amount, parse_date(when).isoformat()))
-    audit(conn, "insert", "charge", cur.lastrowid, {"lease_id": lease_id, "type": "credit", "amount": -amount})
-    return cur.lastrowid
-
-
-def void_charge(conn: sqlite3.Connection, charge_id: int, reason: str) -> None:
-    c = row_or_error(conn, "SELECT * FROM charges WHERE id = ?", (charge_id,), "Charge")
-    if c["voided_at"]:
-        raise ServiceError("This charge is already voided")
-    if not (reason or "").strip():
-        raise ServiceError("A reason is required to void a charge")
-    ensure_open(conn, c["due_date"])
-    conn.execute("UPDATE charges SET voided_at = ?, void_reason = ? WHERE id = ?",
-                 (now_utc(), reason.strip(), charge_id))
-    audit(conn, "void", "charge", charge_id, {"reason": reason.strip(), "amount": c["amount_cents"]})
 
 
 # ---- payments -----------------------------------------------------------------
@@ -190,9 +158,8 @@ def next_receipt_number(conn: sqlite3.Connection, year: int) -> str:
 
 
 def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, received: str | None,
-                   method: str | None, reference: str | None = None, notes: str | None = None,
-                   paid_by_tenant_id: int | None = None, allow_deposit_method: bool = False,
-                   method_other: str | None = None, charge_id: int | None = None) -> int:
+                   method: str | None, notes: str | None = None, method_other: str | None = None,
+                   charge_id: int | None = None) -> int:
     """Record money received. Date defaults to today and method to 'other'.
 
     method_other is what was typed for "Other" (e.g. 'PayMaya'); it's ignored for the other methods.
@@ -201,7 +168,7 @@ def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, 
     _positive(amount, "The amount paid")
     received = received or date.today().isoformat()
     method = method or "other"
-    if method not in PAYMENT_METHODS and not (allow_deposit_method and method == "deposit_applied"):
+    if method not in PAYMENT_METHODS:
         raise ServiceError("Unknown payment method")
     method_other = (" ".join((method_other or "").split())[:60] or None) if method == "other" else None
     lease_row(conn, lease_id)
@@ -211,10 +178,10 @@ def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, 
     received_d = parse_date(received)
     ensure_open(conn, received_d)
     cur = conn.execute(
-        """INSERT INTO payments(lease_id, paid_by_tenant_id, received_date, amount_cents, method,
-                                method_other, reference, receipt_number, notes, charge_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (lease_id, paid_by_tenant_id, received_d.isoformat(), amount, method, method_other, reference or None,
+        """INSERT INTO payments(lease_id, received_date, amount_cents, method, method_other,
+                                receipt_number, notes, charge_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (lease_id, received_d.isoformat(), amount, method, method_other,
          next_receipt_number(conn, received_d.year), notes or None, charge_id))
     audit(conn, "insert", "payment", cur.lastrowid, {"lease_id": lease_id, "amount": amount, "method": method,
                                                          "method_other": method_other})
@@ -304,36 +271,14 @@ def pay_line(conn: sqlite3.Connection, lease_id: int, charge_id: int, amount: in
             "line": c["description"] or c["charge_type"].replace("_", " ").capitalize()}
 
 
-def void_payment(conn: sqlite3.Connection, payment_id: int, reason: str,
-                 nsf_fee: int | None = None, today: date | None = None) -> None:
-    """Void a payment. For a bounced check, pass an NSF fee to charge the tenant."""
-    p = row_or_error(conn, "SELECT * FROM payments WHERE id = ?", (payment_id,), "Payment")
-    if p["voided_at"]:
-        raise ServiceError("This payment is already voided")
-    if not (reason or "").strip():
-        raise ServiceError("A reason is required to void a payment")
-    if p["method"] == "deposit_applied":
-        raise ServiceError("This payment came from the security deposit; void the deposit entry instead")
-    ensure_open(conn, p["received_date"])
-    conn.execute("UPDATE payments SET voided_at = ?, void_reason = ? WHERE id = ?",
-                 (now_utc(), reason.strip(), payment_id))
-    audit(conn, "void", "payment", payment_id, {"reason": reason.strip(), "amount": p["amount_cents"]})
-    if nsf_fee:
-        add_charge(conn, p["lease_id"], "nsf_fee", nsf_fee, (today or date.today()).isoformat(),
-                   f"Returned payment fee (receipt {p['receipt_number']})")
-
-
 def get_payment(conn: sqlite3.Connection, payment_id: int) -> sqlite3.Row:
     return row_or_error(conn, """
-        SELECT pay.*, l.unit_id, u.unit_label, p.code AS property_code, p.name AS property_name,
-               p.address_line1, p.address_line2, p.city, p.state, p.postal_code, o.name AS owner_name,
-               o.phone AS owner_phone, o.mailing_address AS owner_address,
+        SELECT pay.*, l.unit_id, u.unit_label, p.code AS property_code, p.name AS property_name, p.city,
                (SELECT group_concat(t.first_name || ' ' || t.last_name, ', ')
                   FROM lease_tenants lt JOIN tenants t ON t.id = lt.tenant_id
                  WHERE lt.lease_id = l.id AND lt.role IN ('primary','co_tenant')) AS tenants
           FROM payments pay JOIN leases l ON l.id = pay.lease_id
           JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id
-          JOIN owners o ON o.id = p.owner_id
          WHERE pay.id = ?""", (payment_id,), "Payment")
 
 
@@ -365,55 +310,3 @@ def list_payments(conn: sqlite3.Connection, *, start: str | None = None, end: st
           JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id
          {"WHERE " + " AND ".join(where) if where else ""}
          ORDER BY pay.received_date DESC, pay.id DESC LIMIT ?""", params).fetchall()
-
-
-# ---- security deposits ---------------------------------------------------------
-
-def deposit_held(conn: sqlite3.Connection, lease_id: int) -> int:
-    row = conn.execute("SELECT held_cents FROM v_deposit_held WHERE lease_id = ?", (lease_id,)).fetchone()
-    return row[0] if row else 0
-
-
-def deposit_transactions(conn: sqlite3.Connection, lease_id: int) -> list[sqlite3.Row]:
-    return conn.execute("SELECT * FROM deposit_transactions WHERE lease_id = ? ORDER BY txn_date, id",
-                        (lease_id,)).fetchall()
-
-
-def record_deposit(conn: sqlite3.Connection, lease_id: int, txn_type: str, amount: int | None,
-                   when: str | None, description: str | None = None) -> int:
-    when = when or date.today().isoformat()
-    if txn_type not in DEPOSIT_TYPES:
-        raise ServiceError("Choose a deposit transaction type")
-    _positive(amount)
-    lease_row(conn, lease_id)
-    ensure_open(conn, when)
-    if txn_type in DEPOSIT_OUTFLOWS and amount > deposit_held(conn, lease_id):
-        raise ServiceError("That is more than the deposit currently held")
-    payment_id = None
-    if txn_type == "applied_to_balance":
-        payment_id = record_payment(conn, lease_id, amount, when, "deposit_applied",
-                                    notes="Security deposit applied to balance", allow_deposit_method=True)
-    cur = conn.execute(
-        """INSERT INTO deposit_transactions(lease_id, txn_date, txn_type, amount_cents, description, payment_id)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (lease_id, parse_date(when).isoformat(), txn_type, amount, description or None, payment_id))
-    audit(conn, "insert", "deposit_transaction", cur.lastrowid,
-          {"lease_id": lease_id, "type": txn_type, "amount": amount})
-    return cur.lastrowid
-
-
-def void_deposit(conn: sqlite3.Connection, txn_id: int, reason: str) -> None:
-    t = row_or_error(conn, "SELECT * FROM deposit_transactions WHERE id = ?", (txn_id,), "Deposit entry")
-    if t["voided_at"]:
-        raise ServiceError("This deposit entry is already voided")
-    if not (reason or "").strip():
-        raise ServiceError("A reason is required")
-    ensure_open(conn, t["txn_date"])
-    if t["txn_type"] in ("received", "interest") and t["amount_cents"] > deposit_held(conn, t["lease_id"]):
-        raise ServiceError("Void the refunds or deductions made from this money first")
-    conn.execute("UPDATE deposit_transactions SET voided_at = ?, void_reason = ? WHERE id = ?",
-                 (now_utc(), reason.strip(), txn_id))
-    if t["payment_id"]:
-        conn.execute("UPDATE payments SET voided_at = ?, void_reason = ? WHERE id = ? AND voided_at IS NULL",
-                     (now_utc(), reason.strip(), t["payment_id"]))
-    audit(conn, "void", "deposit_transaction", txn_id, {"reason": reason.strip()})

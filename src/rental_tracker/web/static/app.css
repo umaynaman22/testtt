@@ -75,8 +75,6 @@ code { font-family: var(--mono); font-size: .92em; background: var(--surface-2);
 .sidebar .search input { width: 100%; background: #0e151f; border: 1px solid #2c3a4e; color: #e8edf4;
                          border-radius: 6px; padding: 7px 9px; font: inherit; }
 .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
-.sidebar .nav-group { color: var(--sidebar-muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .06em;
-                      margin: 12px 8px 4px; }
 .sidebar nav a { color: var(--sidebar-text); padding: 6px 10px; border-radius: 6px; display: flex; justify-content: space-between; }
 .sidebar nav a:hover { background: var(--sidebar-active); text-decoration: none; color: #fff; }
 .sidebar nav a.active { background: var(--sidebar-active); color: #fff; font-weight: 600; }
@@ -113,9 +111,6 @@ main { padding: 22px 28px 60px; min-width: 0; }
 .meter { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
 .meter > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .meter.ok > span { background: var(--ok); } .meter.warn > span { background: var(--warn); } .meter.bad > span { background: var(--bad); }
-.bars { display: grid; gap: 8px; }
-.bar-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 60px; gap: 10px; align-items: center; font-size: .9rem; }
-.bar-row .meter { margin: 0; height: 8px; }
 
 /* ---- tables ---- */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
@@ -125,9 +120,8 @@ th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--bor
 th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 600;
      background: var(--surface-2); position: sticky; top: 0; white-space: nowrap; }
 tbody tr:hover { background: var(--surface-2); }
-tr.total td, tr.subtotal td { font-weight: 650; }
+tr.total td { font-weight: 650; }
 tr.total td { border-top: 2px solid var(--border-strong); }
-tr.heading td { background: var(--surface-2); font-weight: 650; }
 tr.voided td { color: var(--text-muted); text-decoration: line-through; }
 tr.voided td.keep { text-decoration: none; }
 td.actions { white-space: nowrap; text-align: right; }
@@ -147,11 +141,6 @@ table.compact td { padding: 6px 4px; }
 .flash.ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
 .flash.error { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
 .flash.info { background: var(--info-soft); color: var(--info); border-color: color-mix(in srgb, var(--info) 30%, transparent); }
-.alerts { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-.alerts li { padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--info); background: var(--info-soft); }
-.alerts li.warn { border-color: var(--warn); background: var(--warn-soft); }
-.alerts li.bad { border-color: var(--bad); background: var(--bad-soft); }
-.alerts li a { color: inherit; font-weight: 600; }
 .note { background: var(--surface-2); border-radius: 6px; padding: 8px 12px; color: var(--text-muted); font-size: .9rem; }
 
 /* ---- forms ---- */
@@ -184,19 +173,10 @@ legend { font-weight: 650; padding: 0 6px; }
 .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }
 .filters .field > span { font-size: .78rem; }
-details.pop { display: inline-block; position: relative; }
-details.pop > summary { list-style: none; }
-details.pop > summary::-webkit-details-marker { display: none; }
-details.pop[open] > .pop-body { position: absolute; right: 0; z-index: 20; background: var(--surface); border: 1px solid var(--border-strong);
-  border-radius: var(--radius); padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.18); width: 300px; text-align: left; white-space: normal; }
 details.section > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; }
 .kv dt { color: var(--text-muted); }
 .kv dd { margin: 0; }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; flex-wrap: wrap; }
-.tabs a { padding: 7px 12px; border-bottom: 2px solid transparent; color: var(--text-muted); }
-.tabs a.active { border-color: var(--accent); color: var(--text); font-weight: 600; }
-.tabs a:hover { text-decoration: none; color: var(--text); }
 
 /* ---- rent day ---- */
 /* click-to-change values in the payment history */
@@ -247,7 +227,6 @@ details.pay-line input { width: 96px; text-align: right; }
   body { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: static; height: auto; flex-direction: column; }
   .sidebar nav { flex-direction: row; flex-wrap: wrap; }
-  .sidebar .nav-group { display: none; }
   .sidebar .foot { display: none; }
   main { padding: 16px; }
 }

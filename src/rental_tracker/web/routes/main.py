@@ -18,7 +18,6 @@ log = logging.getLogger(__name__)
 
 SEARCH_LINKS = {
     "property": ("properties.detail", "pid"),
-    "unit": ("properties.unit_detail", "unit_id"),
     "tenant": ("tenants.detail", "tid"),
 }
 
@@ -53,7 +52,7 @@ def dashboard():
 @bp.route("/search")
 def search():
     q = request.args.get("q", "").strip()
-    results = search_svc.search(db(), q) if q else []
+    results = [r for r in (search_svc.search(db(), q) if q else []) if r["entity_type"] in SEARCH_LINKS]
     if len(results) == 1:
         endpoint, arg = SEARCH_LINKS[results[0]["entity_type"]]
         return redirect(url_for(endpoint, **{arg: results[0]["entity_id"]}))
@@ -65,13 +64,12 @@ def search():
 # Where to go after deleting, and back to if it can't be deleted.
 AFTER_DELETE = {
     "property": lambda p: url_for("properties.index"),
-    "unit": lambda p: url_for("properties.detail", pid=p.parent["property_id"]),  # old links
     "lease": lambda p: url_for("properties.detail", pid=p.parent["property_id"]),
     "tenant": lambda p: url_for("tenants.index"),
 }
 RECORD_PAGE = {
-    "property": ("properties.detail", "pid"), "unit": ("properties.unit_detail", "unit_id"),
-    "lease": ("leases.detail", "lease_id"), "tenant": ("tenants.detail", "tid"),
+    "property": ("properties.detail", "pid"), "lease": ("leases.detail", "lease_id"),
+    "tenant": ("tenants.detail", "tid"),
 }
 
 
