@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import threading
 
 from flask import Blueprint, abort, redirect, render_template, request, send_file, session, url_for
@@ -14,6 +15,7 @@ from ..forms import Form
 from . import safe_next
 
 bp = Blueprint("main", __name__)
+log = logging.getLogger(__name__)
 
 SEARCH_LINKS = {
     "property": ("properties.detail", "pid"),
@@ -31,6 +33,7 @@ def auth():
         session.clear()
         session["auth"] = True
         session["in_window"] = request.args.get("window") == "1"
+        log.info("opened in the %s", "app window" if session["in_window"] else "browser")
         return redirect(url_for("main.dashboard"))
     return render_template("locked.html"), 403
 

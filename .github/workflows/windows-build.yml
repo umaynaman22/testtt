@@ -85,6 +85,35 @@ jobs:
           if (-not (Get-ChildItem (Join-Path $data "backups\snapshots") -Filter "*exit.db")) { throw "no backup on exit" }
           Write-Host "Smoke test passed"
 
+      - name: Window test (open the real app window and take a screenshot)
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP "rt-window"
+          $p = Start-Process -FilePath "dist\RentalTracker-Portable.exe" -PassThru -ArgumentList @("--demo", "--data-dir", $data)
+          $logFile = Join-Path $data "logs\app.log"
+          $opened = $false
+          for ($i = 0; $i -lt 90 -and -not $opened; $i++) {
+            Start-Sleep -Seconds 1
+            $opened = (Test-Path $logFile) -and (Select-String -Path $logFile -Pattern "opened in the app window" -Quiet)
+          }
+          Start-Sleep -Seconds 6   # let the dashboard finish drawing
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $bmp.Save("screenshots\app-window.png")
+          if (Test-Path $logFile) { Get-Content $logFile }
+          Get-Process RentalTracker-Portable -ErrorAction SilentlyContinue | Stop-Process -Force   # the one-file exe runs as two processes
+          if (-not $opened) { throw "the app window did not load the app" }
+          Write-Host "The app window opened and loaded the dashboard"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-window-screenshot
+          path: screenshots/
+          if-no-files-found: ignore
+
       - name: Build the installer (Inno Setup)
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
