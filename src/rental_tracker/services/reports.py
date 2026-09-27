@@ -78,8 +78,7 @@ def rent_roll(conn: sqlite3.Connection, property_ids: list[int] | None = None) -
     rows = [dict(r) for r in conn.execute(
         f"SELECT * FROM v_rent_roll WHERE occupancy = 'occupied' AND {flt} ORDER BY property_code, unit_label",
         params)]
-    cols = [Column("property_code", "Property", link=("property", "property_id")),
-            Column("unit_label", "Unit", link=("unit", "unit_id")),
+    cols = [Column("property_code", "Unit", link=("property", "property_id")),
             Column("tenants", "Tenants", link=("lease", "lease_id")),
             Column("lease_status", "Status"), Column("start_date", "Moved in", "date"),
             Column("current_rent_cents", "Rent", "money"),
@@ -112,8 +111,8 @@ def aging_report(conn: sqlite3.Connection, today: date, property_ids: list[int] 
         rows.append({**dict(r), **{f"b_{k}": ag[k] for k in BUCKETS}, "credit": ag["credit"],
                      "past_due": ag["past_due"]})
     rows.sort(key=lambda x: -x["past_due"])
-    cols = [Column("property_code", "Property", link=("property", "property_id")),
-            Column("unit_label", "Unit"), Column("tenants", "Tenants", link=("lease", "lease_id")),
+    cols = [Column("property_code", "Unit", link=("property", "property_id")),
+            Column("tenants", "Tenants", link=("lease", "lease_id")),
             Column("status", "Lease"),
             Column("b_current", "Not yet due", "money"), Column("b_1_30", "1–30 days", "money"),
             Column("b_31_60", "31–60", "money"), Column("b_61_90", "61–90", "money"),
@@ -156,8 +155,8 @@ def collections(conn: sqlite3.Connection, period: str, property_ids: list[int] |
     rows = [r for r in props.values() if r["billed_cents"] or r["received_cents"] or r["outstanding_cents"]]
     for r in rows:
         r["rate"] = (100 * r["paid_cents"] / r["billed_cents"]) if r["billed_cents"] else None
-    cols = [Column("property_code", "Property", link=("property", "property_id")),
-            Column("property_name", "Name"), Column("billed_cents", "Billed for the month", "money"),
+    cols = [Column("property_code", "Unit", link=("property", "property_id")),
+            Column("billed_cents", "Billed for the month", "money"),
             Column("paid_cents", "Paid of that", "money"), Column("rate", "Collected %", "pct"),
             Column("received_cents", "Cash received in month", "money"),
             Column("outstanding_cents", "Total owed now", "money")]
@@ -170,7 +169,7 @@ def collections(conn: sqlite3.Connection, period: str, property_ids: list[int] |
 
 
 REPORTS = {
-    "rent-roll": ("Rent roll", "Every tenant: where they live, rent, balance"),
+    "rent-roll": ("Rent roll", "Every tenant: their unit, rent, balance"),
     "aging": ("Who owes money", "Unpaid amounts by how many days late"),
-    "collections": ("Monthly collections", "Rent billed vs paid, per property"),
+    "collections": ("Monthly collections", "Rent billed vs paid, per unit"),
 }

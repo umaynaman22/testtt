@@ -1,4 +1,8 @@
-"""Owners, properties, units and tags."""
+"""Owners, properties, units and tags.
+
+The app shows a flat list of units: each "unit" on screen is a property with
+exactly one unit (labelled 'Main') behind the scenes. See flatten_units().
+"""
 from __future__ import annotations
 
 import sqlite3
@@ -76,7 +80,7 @@ def save_owner(conn: sqlite3.Connection, owner_id: int | None, fields: dict[str,
 def get_property(conn: sqlite3.Connection, pid: int) -> sqlite3.Row:
     return row_or_error(conn, """
         SELECT p.*, o.name AS owner_name FROM properties p JOIN owners o ON o.id = p.owner_id
-         WHERE p.id = ?""", (pid,), "Property")
+         WHERE p.id = ?""", (pid,), "Unit")
 
 
 def default_owner_id(conn: sqlite3.Connection) -> int:
@@ -88,7 +92,7 @@ def default_owner_id(conn: sqlite3.Connection) -> int:
 
 
 def _unique_code(conn: sqlite3.Connection, base: str, pid: int | None) -> str:
-    base = base.strip()[:60] or "Property"
+    base = base.strip()[:60] or "Unit"
     code, n = base, 2
     while conn.execute("SELECT 1 FROM properties WHERE code = ? AND id IS NOT ?", (code, pid)).fetchone():
         code = f"{base} ({n})"
@@ -109,7 +113,7 @@ def save_property(conn: sqlite3.Connection, pid: int | None, fields: dict[str, A
     name = fields.get("name") or fields.get("address_line1") or (existing["name"] if existing else None)
     if not name:
         n = conn.execute("SELECT COUNT(*) FROM properties").fetchone()[0] + 1
-        name = _unique_code(conn, f"Property {n}", pid)
+        name = _unique_code(conn, f"Unit {n}", pid)
     fields["name"] = name
     fields["code"] = _unique_code(conn, fields.get("code") or name, pid)
     if "address_line1" in fields or existing is None:
@@ -134,6 +138,46 @@ def save_property(conn: sqlite3.Connection, pid: int | None, fields: dict[str, A
     if reindex:
         search.rebuild(conn)
     return new_id
+
+
+def flatten_units(conn: sqlite3.Connection) -> int:
+    """Make every property a single unit, as the screens expect.
+
+    A property with several units becomes one property per unit, named like
+    '251 Osmeña St · 2' (a unit called 'Main' keeps the plain name). Leases,
+    tenants and payments stay with their unit. A property without units gets
+    one. Safe to run any number of times; returns how many units it changed.
+    """
+    changed = 0
+    for p in conn.execute("SELECT * FROM properties ORDER BY id").fetchall():
+        units = conn.execute("SELECT id, unit_label FROM units WHERE property_id = ? ORDER BY id",
+                             (p["id"],)).fetchall()
+        if len(units) == 1 and units[0]["unit_label"] == "Main":
+            continue
+        if not units:
+            save_unit(conn, None, p["id"], {"unit_label": "Main"}, reindex=False)
+            changed += 1
+            continue
+        first, rest = units[0], units[1:]
+        for u in rest:  # move these out first, so the first unit can then be renamed 'Main'
+            name = p["name"] if u["unit_label"] == "Main" else f"{p['name']} · {u['unit_label']}"
+            data = {k: p[k] for k in PROPERTY_FIELDS if k not in ("code", "name", "notes")}
+            data.update(name=name, code=_unique_code(conn, name, None))
+            new_id = conn.execute(f"INSERT INTO properties ({', '.join(data)}) VALUES ({', '.join('?' * len(data))})",
+                                  tuple(data.values())).lastrowid
+            conn.execute("UPDATE units SET property_id = ?, unit_label = 'Main' WHERE id = ?", (new_id, u["id"]))
+            audit(conn, "split", "property", p["id"], {"unit_id": u["id"], "new_property_id": new_id, "name": name})
+            changed += 1
+        if first["unit_label"] != "Main":
+            name = f"{p['name']} · {first['unit_label']}"
+            conn.execute("UPDATE properties SET name = ?, code = ? WHERE id = ?",
+                         (name, _unique_code(conn, name, p["id"]), p["id"]))
+            conn.execute("UPDATE units SET unit_label = 'Main' WHERE id = ?", (first["id"],))
+            audit(conn, "split", "property", p["id"], {"unit_id": first["id"], "name": name})
+            changed += 1
+    if changed:
+        search.rebuild(conn)
+    return changed
 
 
 def parse_unit_labels(text: str | None) -> list[str] | None:
@@ -227,6 +271,7 @@ def list_properties(conn: sqlite3.Connection, *, q: str = "", tag_id: int | None
              WHERE u.status = 'active'
              GROUP BY u.property_id)
         SELECT p.*, o.name AS owner_name,
+               (SELECT MIN(u.id) FROM units u WHERE u.property_id = p.id) AS unit_id,
                COALESCE(us.units, 0) AS units, COALESCE(us.occupied, 0) AS occupied,
                CASE WHEN COALESCE(us.units, 0) = 0 THEN NULL
                     ELSE ROUND(100.0 * us.occupied / us.units, 1) END AS occupancy_pct,

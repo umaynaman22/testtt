@@ -8,8 +8,8 @@
   <thead><tr><th>Type</th><th>Name</th><th>Matched</th></tr></thead>
   <tbody>
   {% for r, link in results %}
-    <tr><td><span class="badge">{{ r.entity_type|label }}</span></td><td><a href="{{ link }}">{{ r.title }}</a></td><td class="muted small">{{ r.snippet }}</td></tr>
+    <tr><td><span class="badge">{{ {'property': 'Unit'}.get(r.entity_type, r.entity_type|label) }}</span></td><td><a href="{{ link }}">{{ r.title }}</a></td><td class="muted small">{{ r.snippet }}</td></tr>
   {% endfor %}
   </tbody></table></div>
-{% elif q %}<div class="card empty">Nothing matched. Try fewer words, a street name, or part of a tenant's name.</div>{% endif %}
+{% elif q %}<div class="card empty">Nothing matched. Try fewer words, part of a unit's name, or part of a tenant's name.</div>{% endif %}
 {% endblock %}

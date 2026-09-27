@@ -5,7 +5,7 @@
 {{ m.page_head("Late", rows|length ~ " tenant" ~ ('' if rows|length == 1 else 's') ~ " behind · " ~ (total|money) ~ " overdue") }}
 {% if rows %}
 <div class="table-wrap"><table>
-  <thead><tr><th>Tenant</th><th>Property</th><th>Phone</th><th class="num">Overdue</th><th class="num">Total owed</th><th>How late</th><th>Last paid</th><th></th></tr></thead>
+  <thead><tr><th>Tenant</th><th>Unit</th><th>Phone</th><th class="num">Overdue</th><th class="num">Total owed</th><th>How late</th><th>Last paid</th><th></th></tr></thead>
   <tbody>{% for r in rows %}<tr>
     <td><a href="{{ url_for('leases.detail', lease_id=r.lease_id) }}"><strong>{{ r.names }}</strong></a>{% if r.status in ['ended', 'terminated'] %} <span class="badge">moved out</span>{% endif %}</td>
     <td>{{ place(r.property_code, r.unit_label) }}</td>

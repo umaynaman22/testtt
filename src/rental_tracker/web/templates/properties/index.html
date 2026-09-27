@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}Properties{% endblock %}
+{% block title %}Units{% endblock %}
 {% block content %}
-{% call m.page_head("Properties", rows|length ~ " properties · " ~ totals.occupied ~ " of " ~ totals.units ~ " units rented") %}
-  <a class="btn primary" href="{{ url_for('properties.new') }}">Add property</a>
+{% call m.page_head("Units", rows|length ~ " unit" ~ ('' if rows|length == 1 else 's') ~ " · " ~ (totals.balance|money) ~ " owed") %}
+  <a class="btn primary" href="{{ url_for('properties.new') }}">Add unit</a>
 {% endcall %}
 <form class="filters" method="get">
-  <label class="field"><span>Search</span><input name="q" value="{{ request.args.get('q', '') }}" placeholder="Name or street"></label>
+  <label class="field"><span>Search</span><input name="q" value="{{ request.args.get('q', '') }}" placeholder="Name, street or city"></label>
   <label class="field"><span>Sort</span><select name="sort">
     {% for k, t in [('name','Name'),('city','City'),('balance','Most owed first')] %}
     <option value="{{ k }}" {{ 'selected' if request.args.get('sort', 'name') == k }}>{{ t }}</option>{% endfor %}</select></label>
@@ -15,22 +15,28 @@
 </form>
 {% if rows %}
 <div class="table-wrap"><table>
-  <thead><tr><th>Property</th><th>City</th><th class="num">Units</th><th class="num">Rented</th><th class="num">Rent / month</th><th class="num">Owed</th></tr></thead>
+  <thead><tr><th>Unit</th><th>City</th><th>Tenant</th><th class="num">Rent / month</th><th class="num">Owed</th><th>Status</th><th></th></tr></thead>
   <tbody>
-  {% for p in rows %}
+  {% for p in rows %}{% set t = people.get(p.id) %}
     <tr>
       <td><a href="{{ url_for('properties.detail', pid=p.id) }}"><strong>{{ p.name }}</strong></a></td>
-      <td>{{ p.city }}{% if p.city and p.state %}, {% endif %}{{ p.state }}</td>
-      <td class="num">{{ p.units }}</td>
-      <td class="num">{{ p.occupied }}</td>
-      <td class="num">{{ p.rent_cents|money }}</td>
-      <td class="num {{ 'neg' if p.balance_cents > 0 }}">{{ p.balance_cents|money(true) }}</td>
+      <td>{{ p.city }}</td>
+      {% if t %}
+      <td><a href="{{ url_for('leases.detail', lease_id=t.lease_id) }}">{{ t.names }}</a>{% if t.status == 'future' %} <span class="badge info">moves in {{ t.start_date|fdate }}</span>{% endif %}</td>
+      <td class="num">{{ t.current_rent_cents|money }}</td>
+      <td class="num {{ 'neg' if t.balance_cents > 0 }}">{{ t.balance_cents|money(true) }}</td>
+      <td>{{ m.state_badge(t) }}</td>
+      <td class="actions"><a class="btn small" href="{{ url_for('leases.detail', lease_id=t.lease_id) }}#pay">Record payment</a></td>
+      {% else %}
+      <td class="muted">—</td><td></td><td></td><td></td>
+      <td class="actions"><a class="btn small primary" href="{{ url_for('leases.new', unit_id=p.unit_id) }}">Add tenant</a></td>
+      {% endif %}
     </tr>
   {% endfor %}
   </tbody>
-  <tfoot><tr class="total"><td colspan="2">Total</td><td class="num">{{ totals.units }}</td><td class="num">{{ totals.occupied }}</td><td class="num">{{ totals.rent|money }}</td><td class="num">{{ totals.balance|money }}</td></tr></tfoot>
+  <tfoot><tr class="total"><td colspan="3">Total</td><td class="num">{{ totals.rent|money }}</td><td class="num">{{ totals.balance|money }}</td><td colspan="2"></td></tr></tfoot>
 </table></div>
 {% else %}
-<div class="card empty">No properties yet. <a href="{{ url_for('properties.new') }}">Add your first property</a>.</div>
+<div class="card empty">{% if request.args.get('q') %}No units match.{% else %}No units yet. <a href="{{ url_for('properties.new') }}">Add your first unit</a>.{% endif %}</div>
 {% endif %}
 {% endblock %}

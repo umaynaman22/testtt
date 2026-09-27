@@ -1,4 +1,4 @@
-"""Tenants: the list, and people who aren't linked to a property yet."""
+"""Tenants: the list, and people who aren't linked to a unit yet."""
 from __future__ import annotations
 
 import csv
@@ -26,9 +26,9 @@ def index():
     if request.args.get("format") == "csv":
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["tenant", "property", "unit", "phone", "rent", "balance", "overdue", "days late", "last paid"])
+        w.writerow(["tenant", "unit", "phone", "rent", "balance", "overdue", "days late", "last paid"])
         for r in rows:
-            w.writerow(csv_row([r["names"], r["property_code"] or "", r["unit_label"] or "", r["phone"] or "",
+            w.writerow(csv_row([r["names"], r["property_code"] or "", r["phone"] or "",
                                 cents_to_input(r["current_rent_cents"]),
                                 cents_to_input(r["balance_cents"]), cents_to_input(r["past_due_cents"]),
                                 r["days_late"] or "", r["last_paid_on"] or ""]))

@@ -2,14 +2,14 @@
 {% import "_macros.html" as m with context %}
 {% block title %}Add tenant{% endblock %}
 {% block content %}
-{{ m.page_head("Add tenant" if not person else "Link " ~ ((person.first_name ~ " " ~ person.last_name)|trim) ~ " to a property",
+{{ m.page_head("Add tenant" if not person else "Link " ~ ((person.first_name ~ " " ~ person.last_name)|trim) ~ " to a unit",
                "Fill in whatever you know — every field is optional and can be changed later.",
                crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a>') }}
 <form method="post" class="card" style="max-width:820px">
   {{ m.csrf() }}
   {% if person %}<input type="hidden" name="tenant_id" value="{{ person.id }}">{% endif %}
   <div class="form-grid">
-    {{ m.select("unit_id", "Property", unit_opts, blank="— not yet —") }}
+    {{ m.select("unit_id", "Unit", unit_opts, blank="— not yet —") }}
     {% if not person %}
     {{ m.input("name", "Name", placeholder="e.g. Ann Lee", attrs='autofocus') }}
     {{ m.input("phone", "Phone") }}

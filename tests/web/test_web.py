@@ -161,13 +161,45 @@ def test_tenant_without_property_can_be_linked_later(app, client):
     r = client.post("/tenants/new", data={"csrf_token": token, "name": "Sam Lee"})
     tid = int(r.headers["Location"].rstrip("/").split("/")[-1])
     page = client.get(f"/tenants/{tid}").get_data(as_text=True)
-    assert "Not linked to a property" in page
-    assert "No property" in client.get("/tenants").get_data(as_text=True)
+    assert "Not linked to a unit" in page
+    assert "No unit" in client.get("/tenants").get_data(as_text=True)
     pid = client.post("/properties/new", data={"csrf_token": token, "name": "9 Oak Ct"}).headers["Location"].split("/")[-1]
     unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
     r = client.post("/tenants/new", data={"csrf_token": token, "tenant_id": tid, "unit_id": unit, "rent": "900"})
     assert "/leases/" in r.headers["Location"]
     assert client.get(f"/tenants/{tid}").status_code == 302  # now goes to their account page
+
+
+def test_units_not_properties(app, client):
+    token = csrf(client)
+    assert q(app, "SELECT MAX(n) FROM (SELECT COUNT(*) AS n FROM units GROUP BY property_id)") == [1]
+    home = client.get("/").get_data(as_text=True)
+    assert ">Units<" in home and ">Properties<" not in home and "Add unit" in home
+    listing = client.get("/properties").get_data(as_text=True)
+    assert "<h1>Units</h1>" in listing and "Add tenant" in listing and "Record payment" in listing
+    form = client.get("/properties/new").get_data(as_text=True)
+    assert 'name="units"' not in form and "Add unit" in form
+    r = client.post("/properties/new", data={"csrf_token": token, "name": "Unit 2B Sunrise Apartments"})
+    pid = int(r.headers["Location"].rstrip("/").split("/")[-1])
+    page = client.get(f"/properties/{pid}").get_data(as_text=True)
+    assert "Add a unit" not in page and "No tenant yet" in page and "Add tenant" in page
+    assert client.post(f"/properties/{pid}/units", data={"csrf_token": token}).status_code in (404, 405)
+    unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
+    assert client.get(f"/units/{unit}").headers["Location"].endswith(f"/properties/{pid}")
+    assert "the unit" in client.get(f"/delete/property/{pid}").get_data(as_text=True)
+
+
+def test_old_multi_unit_properties_are_split_on_startup(app):
+    from rental_tracker.services import portfolio
+    conn = dbmod.connect(app.extensions["rental_tracker"].data.db)
+    pid = portfolio.save_property(conn, None, {"name": "Old Building"}, unit_labels=["A", "B"])
+    conn.close()
+    app.extensions["rental_tracker"].last_catch_up = None  # as if the app just started
+    c = app.test_client()
+    c.get(f"/auth?token={TOKEN}")
+    page = c.get("/properties?q=Old").get_data(as_text=True)
+    assert "Old Building · A" in page and "Old Building · B" in page
+    assert q(app, f"SELECT COUNT(*) FROM units WHERE property_id = {pid}") == [1]
 
 
 def test_late_page_and_fees(app, client):

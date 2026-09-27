@@ -3,40 +3,32 @@
 {% block title %}{{ prop.name }}{% endblock %}
 {% block content %}
 {% set addr = [prop.city, prop.state, prop.postal_code]|select|join(' ') %}
-{% call m.page_head(prop.name, addr or None, crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a>') %}
+{% call m.page_head(prop.name, addr or None, crumbs='<a href="' ~ url_for('properties.index') ~ '">Units</a>') %}
   <a class="btn" href="{{ url_for('properties.edit', pid=prop.id) }}">Edit</a>
   {{ m.delete_link('property', prop.id) }}
 {% endcall %}
 
-<div class="card" id="units">
-  <h2>{{ 'Tenants' if units|length > 1 else 'Tenant' }}</h2>
+<div class="card" id="tenant">
+  <h2>Tenant</h2>
+  {% if tenancies %}
   <div class="table-wrap"><table>
-    <thead><tr>{% if units|length > 1 %}<th>Unit</th>{% endif %}<th>Tenant</th><th>Phone</th><th class="num">Rent</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Tenant</th><th>Phone</th><th class="num">Rent</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
     <tbody>
-    {% for u in units %}{% set t = people.get(u.id) %}
+    {% for t in tenancies %}
       <tr>
-        {% if units|length > 1 %}<td><a href="{{ url_for('properties.unit_detail', unit_id=u.id) }}">{{ u.unit_label }}</a></td>{% endif %}
-        {% if t %}
-          <td><a href="{{ url_for('leases.detail', lease_id=t.lease_id) }}"><strong>{{ t.names }}</strong></a>{% if t.status == 'future' %} <span class="badge info">moves in {{ t.start_date|fdate }}</span>{% endif %}</td>
-          <td class="nowrap">{{ t.phone or '' }}</td>
-          <td class="num">{{ t.current_rent_cents|money }}</td>
-          <td class="num {{ 'neg' if t.balance_cents > 0 }}">{{ t.balance_cents|money }}</td>
-          <td>{{ m.state_badge(t) }}</td>
-          <td class="actions"><a class="btn small primary" href="{{ url_for('leases.detail', lease_id=t.lease_id) }}#pay">Record payment</a></td>
-        {% else %}
-          <td class="muted">Vacant</td><td></td><td></td><td></td><td></td>
-          <td class="actions"><a class="btn small primary" href="{{ url_for('leases.new', unit_id=u.id) }}">Add tenant</a></td>
-        {% endif %}
+        <td><a href="{{ url_for('leases.detail', lease_id=t.lease_id) }}"><strong>{{ t.names }}</strong></a>{% if t.status == 'future' %} <span class="badge info">moves in {{ t.start_date|fdate }}</span>{% endif %}</td>
+        <td class="nowrap">{{ t.phone or '' }}</td>
+        <td class="num">{{ t.current_rent_cents|money }}</td>
+        <td class="num {{ 'neg' if t.balance_cents > 0 }}">{{ t.balance_cents|money }}</td>
+        <td>{{ m.state_badge(t) }}</td>
+        <td class="actions"><a class="btn small primary" href="{{ url_for('leases.detail', lease_id=t.lease_id) }}#pay">Record payment</a></td>
       </tr>
     {% endfor %}
     </tbody></table></div>
-  <details class="section"><summary>Add a unit</summary>
-    <form method="post" action="{{ url_for('properties.add_unit', pid=prop.id) }}" class="filters" style="margin-top:8px">
-      {{ m.csrf() }}
-      {{ m.input("unit_label", "Unit name", placeholder="e.g. 2B") }}
-      <button class="btn">Add unit</button>
-    </form>
-  </details>
+  {% else %}
+  <p class="muted">No tenant yet.</p>
+  {% if unit_id %}<div class="actions"><a class="btn primary" href="{{ url_for('leases.new', unit_id=unit_id) }}">Add tenant</a></div>{% endif %}
+  {% endif %}
 </div>
 
 <div class="{{ 'grid-2' if past or prop.notes }}">

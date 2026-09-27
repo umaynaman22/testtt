@@ -243,8 +243,8 @@ def _preview_property(conn, pid: int) -> Preview:
     prop = row_or_error(conn, "SELECT * FROM properties WHERE id = ?", (pid,), "Property")
     p = Preview("property", pid, prop["name"] or prop["code"], parent={"owner_id": prop["owner_id"]})
     units, leases, expenses = _property_scope(conn, pid)
-    p.removes.append("the property")
-    if units:
+    p.removes.append("the unit")
+    if len(units) > 1:
         p.removes.append(_plural(len(units), "unit"))
     _describe_leases(conn, p, leases)
     if expenses:

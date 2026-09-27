@@ -117,9 +117,9 @@ def payments():
     if request.args.get("format") == "csv":
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["date", "receipt", "property", "unit", "tenants", "method", "amount", "voided", "void_reason"])
+        w.writerow(["date", "receipt", "unit", "tenants", "method", "amount", "voided", "void_reason"])
         for r in rows:
-            w.writerow(csv_row([r["received_date"], r["receipt_number"], r["property_code"], r["unit_label"],
+            w.writerow(csv_row([r["received_date"], r["receipt_number"], r["property_code"],
                                 r["tenants"], ledger.method_name(r["method"], r["method_other"]),
                                 f"{r['amount_cents'] / 100:.2f}",
                                 "yes" if r["voided_at"] else "", r["void_reason"] or ""]))

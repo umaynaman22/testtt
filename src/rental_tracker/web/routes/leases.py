@@ -1,4 +1,4 @@
-"""A tenant's account: adding a tenant to a property, payments, debts and balance.
+"""A tenant's account: adding a tenant to a unit, payments, debts and balance.
 
 Behind the scenes each tenancy is a lease (a unit + the people living there);
 the screens just call it the tenant's page.
@@ -46,7 +46,7 @@ def _next_due(lease) -> date:
 
 @bp.route("/tenants/new", methods=["GET", "POST"])
 def new():
-    """Add a tenant to a property. Everything is optional."""
+    """Add a tenant to a unit. Everything is optional."""
     conn = db()
     unit_id = request.values.get("unit_id", type=int)
     existing = request.values.get("tenant_id", type=int)
@@ -81,7 +81,7 @@ def new():
             if r.get("lease_id"):
                 flash("Tenant added.", "ok")
                 return redirect(url_for("leases.detail", lease_id=r["lease_id"]))
-            flash("Tenant added. You can link them to a property any time.", "ok")
+            flash("Tenant added. You can link them to a unit any time.", "ok")
             return redirect(url_for("tenants.detail", tid=r["tenant_only"]))
         values = request.form
     else:

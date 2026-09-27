@@ -676,13 +676,13 @@ Each phase ends with something usable, and the phases are built in order.
 
 ## 18. Build status
 
-At the owner's request the app was **simplified to the essentials**: add a property, add a tenant to it, and track payments, balances and late rent. Every form field is optional; blanks get sensible defaults (e.g. "Property 1", move-in today, no late fee).
+At the owner's request the app was **simplified to the essentials**: add a unit, add a tenant to it, and track payments, balances and late rent. Every form field is optional; blanks get sensible defaults (e.g. "Unit 1", move-in today, no late fee).
 
 **In the app**
 
-- **Screens:** Dashboard · Properties · Tenants · Collect rent · Payments · Late · Reports · Settings, plus global search and a Quit button.
-- **Properties:** add, edit and delete properties, with optional units (type "4" or "A, B, C").
-- **Tenants:** add a tenant to a property (or without one, and link them later). Extra people can be added on the tenant page.
+- **Screens:** Dashboard · Units · Tenants · Collect rent · Payments · Late · Reports · Settings, plus global search and a Quit button.
+- **Units:** a flat list of the places you rent out (a house, an apartment, a room), each with its tenant, rent, balance and status. There is no property-with-units level on screen: behind the scenes each unit is a property with one unit, and at startup `portfolio.flatten_units()` splits any older multi-unit property into separate units named like "251 Osmeña St · 2", keeping their tenants and payments.
+- **Tenants:** add a tenant to a unit (or without one, and link them later). Extra people can be added on the tenant page.
 - **Tenant page:** balance, whether and how long they're late, last payment, payment history, and recording or deleting payments. **Add debt** records money owed besides rent (an old balance, a repair) and adds it to the balance. Rent changes go through Edit and start with the next bill. You can also print a statement.
 - **Rent billing:** automatic (prorated partial months). For tenants who moved in before they were added, billing starts from the current month, and anything they owed before goes in "Debt".
 - **Collect rent:** a keyboard-driven grid for entering everyone's payments.
@@ -690,7 +690,7 @@ At the owner's request the app was **simplified to the essentials**: add a prope
 - **Late:** who is behind, by how many days and how much; optional late fees that you charge or skip.
 - **Reports:** rent roll, who owes money, monthly collections. All printable and exportable to CSV.
 - **Settings:** your name for receipts, default late fee and grace days, when to bill rent, proration method.
-- **Delete:** on everything, with a confirmation page for properties, units and tenants.
+- **Delete:** on everything, with a confirmation page for units and tenants.
 
 **Kept in the background, without screens**
 
@@ -698,6 +698,6 @@ At the owner's request the app was **simplified to the essentials**: add a prope
 - The audit log of every change.
 - The books lock and payment application rules described above.
 
-**Removed from the app:** owners, expenses and vendors (and the P&L, Schedule E, 1099 and performance reports that depend on them), CSV import, the Backups and Audit log pages, documents, tags, voiding, separate charges and credits, security deposits, moving out, lease end dates, tenant email, check/reference numbers, the window Back button, and vacant-unit lists (the dashboard list and occupancy box, the vacancy report and filter, vacant rows in the rent roll). A property page still shows an empty unit with an Add tenant button. The database still has the tables, so any of these can be brought back later.
+**Removed from the app:** owners, expenses and vendors (and the P&L, Schedule E, 1099 and performance reports that depend on them), CSV import, the Backups and Audit log pages, documents, tags, voiding, separate charges and credits, security deposits, moving out, lease end dates, tenant email, check/reference numbers, the window Back button, and vacant-unit lists (the dashboard list and occupancy box, the vacancy report and filter, vacant rows in the rent roll). A unit with no tenant shows an Add tenant button. The database still has the tables, so any of these can be brought back later.
 
 **Windows packaging:** GitHub Actions builds a per-user installer (Inno Setup) and a portable single-file `.exe` (PyInstaller) on every push. The build runs the tests on Windows, self-tests both builds, smoke-tests the app with demo data, and opens the real app window. See `packaging/` and `.github/workflows/windows-build.yml`.

@@ -1,4 +1,4 @@
-"""Reports: pick one, filter by property, view, print or export."""
+"""Reports: pick one, filter by unit, view, print or export."""
 from __future__ import annotations
 
 from flask import Blueprint, Response, abort, render_template, request

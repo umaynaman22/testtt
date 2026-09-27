@@ -1,6 +1,6 @@
 from datetime import date
 
-from rental_tracker.services import dashboard, ledger, portfolio, reports, rent_posting, tenants
+from rental_tracker.services import dashboard, leases, ledger, portfolio, reports, rent_posting, tenants
 from tests.conftest import make_lease
 
 TODAY = date(2026, 3, 20)
@@ -9,7 +9,7 @@ TODAY = date(2026, 3, 20)
 def test_optional_fields_everywhere(conn):
     pid = portfolio.save_property(conn, None, {})
     prop = portfolio.get_property(conn, pid)
-    assert prop["name"] == "Property 1" and prop["code"] == "Property 1"
+    assert prop["name"] == "Unit 1" and prop["code"] == "Unit 1"
     pid2 = portfolio.save_property(conn, None, {"name": "12 Maple St"}, unit_labels=portfolio.parse_unit_labels("3"))
     assert [u["unit_label"] for u in portfolio.units_for_property(conn, pid2)] == ["1", "2", "3"]
     assert portfolio.save_property(conn, None, {"name": "12 Maple St"}) != pid2  # same name is fine
@@ -17,6 +17,39 @@ def test_optional_fields_everywhere(conn):
     tid = tenants.save_tenant(conn, None, {})
     assert tenants.get_tenant(conn, tid)["first_name"] == "Unnamed"
     assert tenants.split_name("Ann") == ("Ann", "") and tenants.split_name("Lee, Ann") == ("Ann", "Lee")
+
+
+def test_flatten_units_makes_one_unit_per_property(conn, owner_id):
+    """The app lists units, not properties; older multi-unit properties are split up."""
+    building = portfolio.save_property(conn, None, {"name": "251 Osmena St", "city": "Cebu City"},
+                                       unit_labels=["1", "2", "3"])
+    units = {u["unit_label"]: u["id"] for u in portfolio.units_for_property(conn, building)}
+    tid = tenants.save_tenant(conn, None, {"first_name": "Ana"})
+    lid = leases.create_lease(conn, unit_id=units["2"], tenants=[(tid, "primary")], start="2026-01-01", end=None,
+                              rent_cents=900000, today=TODAY)
+    house = portfolio.save_property(conn, None, {"name": "9 Luna St"})
+    extra = portfolio.save_unit(conn, None, house, {"unit_label": "Garage"})
+    single = portfolio.save_property(conn, None, {"name": "Sunrise"}, unit_labels=["2B"])
+    empty = portfolio.save_property(conn, None, {"name": "Lot"})
+    conn.execute("DELETE FROM units WHERE property_id = ?", (empty,))
+    balance = ledger.lease_summary(conn, lid, TODAY)["balance"]
+
+    assert portfolio.flatten_units(conn) == 3 + 1 + 1 + 1
+    names = {r["name"] for r in conn.execute("SELECT name FROM properties")}
+    assert {"251 Osmena St · 1", "251 Osmena St · 2", "251 Osmena St · 3", "9 Luna St", "9 Luna St · Garage",
+            "Sunrise · 2B", "Lot"} <= names
+    assert conn.execute("SELECT COUNT(*) FROM units WHERE unit_label <> 'Main'").fetchone()[0] == 0
+    assert conn.execute("SELECT MAX(n) FROM (SELECT COUNT(*) AS n FROM units GROUP BY property_id)").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM properties p WHERE NOT EXISTS "
+                        "(SELECT 1 FROM units u WHERE u.property_id = p.id)").fetchone()[0] == 0
+    moved = portfolio.get_unit(conn, units["2"])
+    assert moved["property_name"] == "251 Osmena St · 2"
+    assert portfolio.get_property(conn, moved["property_id"])["city"] == "Cebu City"  # address copied over
+    assert leases.get_lease(conn, lid)["unit_id"] == units["2"]
+    assert ledger.lease_summary(conn, lid, TODAY)["balance"] == balance  # money untouched
+    assert portfolio.get_unit(conn, extra)["property_name"] == "9 Luna St · Garage"
+    assert portfolio.get_property(conn, single)["name"] == "Sunrise · 2B"
+    assert portfolio.flatten_units(conn) == 0  # nothing left to do
 
 
 def test_tenancies_show_late_tenants(conn, owner_id):

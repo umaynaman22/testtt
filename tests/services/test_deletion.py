@@ -80,7 +80,7 @@ def test_delete_property(conn, owner_id):
     pid = conn.execute("SELECT id FROM properties WHERE code = 'P-1'").fetchone()[0]
     make_property(conn, owner_id, code="P-2")
     p = deletion.preview(conn, "property", pid)
-    assert "1 unit" in p.removes and "1 tenant record" in p.removes
+    assert "the unit" in p.removes and "1 tenant record" in p.removes
     deletion.delete(conn, "property", pid)
     assert count(conn, "properties") == 1 and count(conn, "leases") == 0 and count(conn, "tenants") == 0
     assert not ledger.load_ledgers(conn, [lid])

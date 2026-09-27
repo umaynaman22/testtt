@@ -2,8 +2,8 @@
 {% import "_macros.html" as m with context %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-{% call m.page_head("Dashboard", today|fdate("%A, %B %-d, %Y") ~ " · " ~ d.property_count ~ " properties") %}
-  <a class="btn" href="{{ url_for('properties.new') }}">Add property</a>
+{% call m.page_head("Dashboard", today|fdate("%A, %B %-d, %Y") ~ " · " ~ d.property_count ~ " unit" ~ ('' if d.property_count == 1 else 's')) %}
+  <a class="btn" href="{{ url_for('properties.new') }}">Add unit</a>
   <a class="btn primary" href="{{ url_for('rentday.index') }}">Collect rent</a>
 {% endcall %}
 
@@ -32,7 +32,7 @@
     <h2>Late <a class="side" href="{{ url_for('rentday.late') }}">All →</a></h2>
     {% if d.late %}
     <div class="table-wrap"><table>
-      <thead><tr><th>Tenant</th><th>Property</th><th class="num">Overdue</th><th>How late</th></tr></thead>
+      <thead><tr><th>Tenant</th><th>Unit</th><th class="num">Overdue</th><th>How late</th></tr></thead>
       <tbody>{% for r in d.late[:12] %}<tr>
         <td><a href="{{ url_for('leases.detail', lease_id=r.lease_id) }}">{{ r.names }}</a></td>
         <td>{{ place(r.property_code, r.unit_label) }}</td>

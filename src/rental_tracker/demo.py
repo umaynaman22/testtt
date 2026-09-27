@@ -1,4 +1,4 @@
-"""A made-up portfolio for trying the app: 60 properties, 78 units, 6 months of payments, in pesos."""
+"""A made-up portfolio for trying the app: 78 units, 6 months of payments, in pesos."""
 from __future__ import annotations
 
 import random
@@ -32,7 +32,6 @@ def build_demo(data: DataDir, today: date | None = None, properties: int = 60, s
     with dbmod.transaction(conn):
         used_codes: set[str] = set()
         units: list[tuple[int, int, int]] = []  # (property_id, unit_id, market rent)
-        property_ids = []
         for i in range(properties):
             street = rnd.choice(STREETS)
             number = rnd.randint(1, 980)
@@ -47,17 +46,17 @@ def build_demo(data: DataDir, today: date | None = None, properties: int = 60, s
             pid = portfolio.save_property(conn, None, {
                 "name": address, "property_type": kind, "address_line1": address, "city": city, "state": state,
                 "postal_code": f"{zip3}{rnd.randint(0, 99):02d}"}, unit_labels=labels, reindex=False)
-            property_ids.append(pid)
             for u in conn.execute("SELECT id FROM units WHERE property_id = ?", (pid,)):
                 rent = rnd.randint(8, 35) * 1000_00 + rnd.choice([0, 500_00])
                 beds = rnd.choice([1, 2, 2, 3, 3, 4])
                 conn.execute("UPDATE units SET market_rent_cents = ?, bedrooms = ?, bathrooms = ?, square_feet = ? WHERE id = ?",
                              (rent, beds, rnd.choice([1, 1.5, 2]), 500 + beds * 300 + rnd.randint(0, 300), u["id"]))
                 units.append((pid, u["id"], rent))
+        portfolio.flatten_units(conn)  # apartments become separate units, e.g. "251 Osmeña St · 2"
 
         lease_ids = []
         vacant = set(rnd.sample(range(len(units)), 6))
-        for n, (pid, unit_id, market) in enumerate(units):
+        for n, (_, unit_id, market) in enumerate(units):
             if n in vacant:
                 continue
             people = []

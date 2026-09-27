@@ -1,8 +1,8 @@
 # Rental Tracker (offline)
 
-A simple rental tracker that runs **entirely on your own computer, with no internet**. It works for one house or 50+ properties.
+A simple rental tracker that runs **entirely on your own computer, with no internet**. It works for one unit or 50+.
 
-- **Add a property**, then **add a tenant** to it. Every field is optional.
+- **Add a unit** (a house, an apartment, a room), then **add a tenant** to it. Every field is optional.
 - Rent is **billed automatically** each month.
 - **Record payments**, one at a time or all at once on the *Collect rent* screen: cash, check, bank transfer, GCash, or type in any other method.
 - All amounts are in **Philippine pesos (₱)**.
@@ -59,7 +59,7 @@ Installing is the only step that needs the internet. After that, the app never g
 ## Run
 
 ```bash
-python -m rental_tracker --demo          # try it with a made-up 60-property portfolio (separate folder)
+python -m rental_tracker --demo          # try it with 78 made-up units (separate folder)
 python -m rental_tracker                 # your real data (in Documents/RentalTracker)
 python -m rental_tracker --data-dir "D:\Rentals"   # keep the data somewhere else
 python -m rental_tracker --browser       # use your web browser instead of a window
@@ -69,8 +69,8 @@ The app opens in its own window. If pywebview is not installed, it opens in your
 
 **Getting started:**
 
-1. **Properties → Add property.** Type the address, or leave everything blank and fill it in later.
-2. On the property page, click **Add tenant**. A name and the monthly rent are enough. For someone who already lives there, the app bills rent from this month; put anything they owed before in **Debt**.
+1. **Units → Add unit.** Type its name or address (e.g. "Unit 2B Sunrise Apartments"), or leave everything blank and fill it in later.
+2. On the unit's page, click **Add tenant**. A name and the monthly rent are enough. For someone who already lives there, the app bills rent from this month; put anything they owed before in **Debt**.
 3. When rent comes in, open the tenant and use **Record a payment**, or go to **Collect rent** to enter everyone's at once.
    To add something they owe besides rent, like a repair, use **Add debt** on the tenant's page.
 4. **Late** shows who is behind and by how many days. The dashboard shows the totals.

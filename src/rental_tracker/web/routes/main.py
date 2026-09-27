@@ -65,7 +65,7 @@ def search():
 # Where to go after deleting, and where "Cancel" goes.
 AFTER_DELETE = {
     "property": lambda p: url_for("properties.index"),
-    "unit": lambda p: url_for("properties.detail", pid=p.parent["property_id"]),
+    "unit": lambda p: url_for("properties.detail", pid=p.parent["property_id"]),  # old links
     "lease": lambda p: url_for("properties.detail", pid=p.parent["property_id"]),
     "tenant": lambda p: url_for("tenants.index"),
 }

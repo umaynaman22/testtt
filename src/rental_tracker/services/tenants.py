@@ -123,7 +123,7 @@ def tenant_leases(conn: sqlite3.Connection, tid: int) -> list[sqlite3.Row]:
 
 
 STATE_LABELS = {"late": "Late", "owes": "Owes (not late yet)", "paid": "Paid up", "credit": "Has credit",
-                "none": "No property"}
+                "none": "No unit"}
 
 
 def tenancies(conn: sqlite3.Connection, *, today: date, status: str = "current", q: str = "",

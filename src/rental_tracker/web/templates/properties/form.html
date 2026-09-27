@@ -1,19 +1,18 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}{{ 'Edit property' if prop else 'Add property' }}{% endblock %}
+{% block title %}{{ 'Edit unit' if prop else 'Add unit' }}{% endblock %}
 {% block content %}
-{{ m.page_head('Edit ' ~ prop.name if prop else 'Add property', 'Fill in whatever you like — every field is optional.', crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a>') }}
+{{ m.page_head('Edit ' ~ prop.name if prop else 'Add unit', 'Fill in whatever you like — every field is optional.', crumbs='<a href="' ~ url_for('properties.index') ~ '">Units</a>') }}
 <form method="post" class="card" style="max-width:760px">
   {{ m.csrf() }}
   <div class="form-grid">
-    {{ m.input("name", "Address or name", wide=True, placeholder="e.g. 12 Maple St", attrs='autofocus') }}
+    {{ m.input("name", "Name or address", wide=True, placeholder="e.g. 12 Rizal St, or Unit 2B Sunrise Apartments", attrs='autofocus') }}
     {{ m.input("city", "City") }}
     {{ m.input("state", "Province") }}
     {{ m.input("postal_code", "ZIP code") }}
-    {% if not prop %}{{ m.input("units", "Units", help="Leave blank for a house. For an apartment building, type how many units (e.g. 4) or their names (e.g. A, B, C).") }}{% endif %}
     {{ m.textarea("notes", "Notes") }}
   </div>
-  <div class="actions"><button class="btn primary">{{ 'Save' if prop else 'Add property' }}</button>
+  <div class="actions"><button class="btn primary">{{ 'Save' if prop else 'Add unit' }}</button>
     <a class="btn" href="{{ url_for('properties.detail', pid=prop.id) if prop else url_for('properties.index') }}">Cancel</a></div>
 </form>
 {% endblock %}
