@@ -143,6 +143,38 @@ def update_terms(conn: sqlite3.Connection, lease_id: int, fields: dict[str, Any]
         audit(conn, "update", "lease", lease_id, changes)
 
 
+def bill_from_move_in(conn: sqlite3.Connection, lease_id: int, move_in: str, today: date) -> None:
+    """Set the move-in date and bill rent from it, past months included.
+
+    The automatic rent bills are rebuilt from that date (a partial first month
+    is prorated). Payments are kept; they are re-applied oldest first as always.
+    """
+    lease = ledger.lease_row(conn, lease_id)
+    new = parse_date(move_in)
+    if lease["status"] not in ("active", "month_to_month", "future"):
+        update_terms(conn, lease_id, {"move_in_date": new.isoformat()})
+        return
+    first = conn.execute("SELECT MIN(due_date) FROM charges WHERE lease_id = ? AND source = 'auto' "
+                         "AND charge_type = 'rent'", (lease_id,)).fetchone()[0]
+    ensure_open(conn, min(filter(None, [new.isoformat(), first])))
+    status = lease["status"]
+    if new > today:
+        status = "future"
+    elif status == "future":
+        if _current_lease_on_unit(conn, lease["unit_id"]):
+            raise ServiceError("Someone already lives there. Remove the current tenant first.")
+        status = "active"
+    conn.execute("UPDATE leases SET start_date = ?, move_in_date = ?, billing_start_date = NULL, status = ?, "
+                 "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?",
+                 (new.isoformat(), new.isoformat(), status, lease_id))
+    conn.execute("DELETE FROM charges WHERE lease_id = ? AND source = 'auto' AND charge_type = 'rent'", (lease_id,))
+    conn.execute("DELETE FROM charges WHERE lease_id = ? AND source = 'auto' AND charge_type = 'late_fee' "
+                 "AND period < ?", (lease_id, new.isoformat()[:7]))  # no late fees before they lived there
+    audit(conn, "bill_from_move_in", "lease", lease_id, {"move_in": new.isoformat(), "status": status})
+    if status in CURRENT:
+        rent_posting.post_rent(conn, today, [lease_id])
+
+
 def _set_status(conn, lease_id: int, status: str, **extra: Any) -> None:
     sets = ", ".join(["status = ?", *[f"{k} = ?" for k in extra],
                       "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')"])

@@ -105,19 +105,26 @@ def test_simple_workflow(app, client):
     pid = int(r.headers["Location"].rstrip("/").split("/")[-1])
     unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
     assert "Add tenant" in client.get(f"/properties/{pid}").get_data(as_text=True)
-    # a tenant who has lived there since last year and already owes money
+    # a tenant who has lived there since last year: rent is billed from the move-in date, plus a debt
     r = client.post("/tenants/new", data={"csrf_token": token, "unit_id": unit, "name": "Rita Moreno",
                                           "rent": "1,200", "moved_in": "2025-05-01", "debt": "300"})
     assert r.status_code == 302, r.get_data(as_text=True)[:2000]
     lid = int(r.headers["Location"].rstrip("/").split("/")[-1])
     page = client.get(f"/leases/{lid}").get_data(as_text=True)
-    assert "Rita Moreno" in page and ">Debt<" in page
-    assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0] == 1  # only this month
-    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 150000
+    assert "Rita Moreno" in page and ">Debt<" in page and "Fill in past rent" in page
+    assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0] == 17  # May 2025-Sep 2026
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 17 * 120000 + 30000
+    # they had paid all that rent: fill in the payment history up to today
+    r = client.post(f"/leases/{lid}/fill-rent", data={"csrf_token": token, "method": "cash"}, follow_redirects=True)
+    assert "Marked 17 rent bills as paid" in r.get_data(as_text=True)
+    assert q(app, f"SELECT COUNT(*) FROM payments WHERE lease_id = {lid} AND method = 'cash'")[0] == 17
+    assert q(app, f"SELECT MIN(received_date) FROM payments WHERE lease_id = {lid}") == ["2025-05-01"]
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 30000  # the debt is left
+    assert "Fill in past rent" not in client.get(f"/leases/{lid}").get_data(as_text=True)
     # a payment with only an amount
-    client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": "1500"})
+    client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": "300"})
     assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 0
-    assert q(app, f"SELECT method FROM payments WHERE lease_id = {lid}")[0] == "other"
+    assert q(app, f"SELECT method FROM payments WHERE lease_id = {lid} ORDER BY id DESC LIMIT 1")[0] == "other"
     # Collect rent quick entry, and the typo guard
     r = client.post("/rent-day/pay", data={"lease_id": lid, "amount": "310000", "period": "2026-09"},
                     headers={"HX-Request": "true", "X-CSRF-Token": token})
@@ -154,6 +161,52 @@ def test_removed_fields_and_actions(app, client):
     tid = q(app, "SELECT id FROM tenants LIMIT 1")[0]
     assert 'name="email"' not in client.get(f"/tenants/{tid}/edit").get_data(as_text=True)
     assert 'class="tabs"' not in client.get("/tenants").get_data(as_text=True)
+
+
+def test_fill_in_past_rent_up_to_a_date_and_rebill_on_edit(app, client):
+    token = csrf(client)
+    pid = client.post("/properties/new", data={"csrf_token": token, "name": "5 Luna St"}).headers["Location"].split("/")[-1]
+    unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
+    lid = client.post("/tenants/new", data={"csrf_token": token, "unit_id": unit, "name": "Ana Cruz", "rent": "10000",
+                                            "moved_in": "2026-01-01", "late_fee": "500"}).headers["Location"].split("/")[-1]
+    assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0] == 9  # Jan-Sep
+    # paid through June only
+    client.post(f"/leases/{lid}/fill-rent", data={"csrf_token": token, "through": "2026-06-30", "method": "other",
+                                                  "method_other": "GCash padala"})
+    assert q(app, f"SELECT COUNT(*) FROM payments WHERE lease_id = {lid} AND method_other = 'GCash padala'")[0] == 6
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 3 * 1000000
+    late = client.get("/late").get_data(as_text=True)
+    assert "Ana Cruz" in late  # July to September are still owed
+    from rental_tracker.services import late_fees
+    conn = dbmod.connect(app.extensions["rental_tracker"].data.db)
+    periods = {c.period for c in late_fees.find_candidates(conn, TODAY) if c.lease_id == int(lid)}
+    conn.close()
+    assert periods == {"2026-07", "2026-08", "2026-09"}  # no late fees for the months filled in as paid
+    r = client.post(f"/leases/{lid}/fill-rent", data={"csrf_token": token, "through": "2026-06-30"}, follow_redirects=True)
+    assert "no unpaid rent up to that date" in r.get_data(as_text=True)
+    # moving the move-in date later re-bills from then; payments stay
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "name": "Ana Cruz", "rent": "10000",
+                                             "moved_in": "2026-03-01"})
+    assert q(app, f"SELECT MIN(period) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'") == ["2026-03"]
+    assert q(app, f"SELECT COUNT(*) FROM payments WHERE lease_id = {lid}")[0] == 6
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0] == 7 * 1000000 - 6 * 1000000
+
+
+def test_older_tenants_can_be_billed_from_move_in(app, client):
+    """Tenants added before rent was billed from the move-in date can get their past months billed."""
+    token = csrf(client)
+    lid, start, billed_from = dbmod.connect(app.extensions["rental_tracker"].data.db).execute(
+        "SELECT id, start_date, billing_start_date FROM leases WHERE billing_start_date > start_date "
+        "AND status = 'active' LIMIT 1").fetchone()
+    edit = client.get(f"/leases/{lid}/edit").get_data(as_text=True)
+    assert 'name="bill_from_move_in"' in edit
+    before = q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0]
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "moved_in": start})  # saving alone changes nothing
+    assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'")[0] == before
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "moved_in": start, "bill_from_move_in": "1"})
+    assert q(app, f"SELECT MIN(period) FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'") == [start[:7]]
+    assert q(app, f"SELECT billing_start_date FROM leases WHERE id = {lid}") == [None]
+    assert 'name="bill_from_move_in"' not in client.get(f"/leases/{lid}/edit").get_data(as_text=True)
 
 
 def test_tenant_without_property_can_be_linked_later(app, client):

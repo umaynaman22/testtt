@@ -14,7 +14,8 @@
     {{ m.input("rent_due_day", "Rent due on day", type="number", attrs='min="1" max="28"') }}
     {{ m.money("late_fee", "Late fee", help="Blank = no late fee") }}
     {{ m.input("grace_days", "Days before rent counts as late", type="number", attrs='min="0" max="60"') }}
-    {{ m.date("moved_in", "Moved in") }}
+    {{ m.date("moved_in", "Moved in", help="Rent is billed from this date. Changing it re-bills the rent.") }}
+    {% if billed_from %}{{ m.checkbox("bill_from_move_in", "Also bill the months before " ~ (billed_from|fdate) ~ " (rent is billed from then now)") }}{% endif %}
     {{ m.textarea("notes", "Notes") }}
   </div>
   <div class="actions"><button class="btn primary">Save</button><a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">Cancel</a></div>

@@ -208,6 +208,28 @@ def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, 
     return cur.lastrowid
 
 
+def unpaid_rent(conn: sqlite3.Connection, lease_id: int, through: date) -> list[tuple[LedgerCharge, int]]:
+    """Rent bills due on or before ``through`` that aren't fully paid, oldest first, with what's unpaid."""
+    charges, payments = load_ledgers(conn, [lease_id]).get(lease_id, ([], []))
+    alloc = allocate(charges, payments, payment_order(conn))
+    return [(c, alloc.unpaid[c.id]) for c in sorted(charges, key=lambda c: (c.due_date, c.id))
+            if c.charge_type == "rent" and c.due_date <= through and alloc.unpaid.get(c.id, 0) > 0]
+
+
+def fill_rent_paid(conn: sqlite3.Connection, lease_id: int, through: date, today: date,
+                   method: str | None = None, method_other: str | None = None) -> tuple[int, int]:
+    """Mark rent as paid up to a date: one payment per unpaid rent bill, dated on its due date.
+
+    For months a tenant paid before you started using the app. Returns (payments, total cents).
+    """
+    through = min(through, today)
+    items = unpaid_rent(conn, lease_id, through)
+    for c, amount in items:
+        record_payment(conn, lease_id, amount, c.due_date.isoformat(), method,
+                       notes=f"Filled in: rent {c.period or c.due_date.isoformat()}", method_other=method_other)
+    return len(items), sum(amount for _, amount in items)
+
+
 def void_payment(conn: sqlite3.Connection, payment_id: int, reason: str,
                  nsf_fee: int | None = None, today: date | None = None) -> None:
     """Void a payment. For a bounced check, pass an NSF fee to charge the tenant."""

@@ -39,6 +39,23 @@
       </form>
     </div>
 
+    {% if fill %}
+    <div class="card" id="fill">
+      <h2>Fill in past rent</h2>
+      <p class="small muted" style="margin-top:0">{{ fill.count }} rent bill{{ 's' if fill.count != 1 }} unpaid since {{ fill.since|fdate }} ({{ fill.total|money }}).
+        If they already paid, this adds a payment for each month, dated on its due date, so the history is up to date.</p>
+      <form method="post" action="{{ url_for('leases.fill_rent', lease_id=lease.id) }}"
+            data-confirm="Mark rent as paid for every unpaid month up to the date you picked?">
+        {{ m.csrf() }}
+        <div class="form-grid">
+          {{ m.date("through", "Paid up to", value=today.isoformat()) }}
+          {{ m.pay_method(methods) }}
+        </div>
+        <div class="actions"><button class="btn primary">Mark rent as paid</button></div>
+      </form>
+    </div>
+    {% endif %}
+
     <div class="card" id="history">
       <h2>Payment history <span class="side muted">newest first</span></h2>
       {% if entries %}

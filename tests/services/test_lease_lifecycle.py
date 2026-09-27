@@ -94,3 +94,33 @@ def test_deposits(conn, owner_id):
     txn = conn.execute("SELECT id FROM deposit_transactions WHERE txn_type = 'applied_to_balance'").fetchone()[0]
     ledger.void_deposit(conn, txn, "entered by mistake")
     assert ledger.deposit_held(conn, lid) == 100000 and ledger.lease_balance(conn, lid) == 100000
+
+
+def test_fill_rent_paid_covers_partly_paid_months(conn, owner_id):
+    lid = make_lease(conn, owner_id, start="2026-01-01", end=None, rent=100000, today=date(2026, 3, 15))
+    assert len(ledger.unpaid_rent(conn, lid, date(2026, 3, 15))) == 3
+    ledger.record_payment(conn, lid, 50000, "2026-02-03", "cash")  # half a month, applied to January
+    ledger.add_charge(conn, lid, "other", 20000, "2026-03-15", "Debt")
+    n, total = ledger.fill_rent_paid(conn, lid, date(2026, 12, 31), date(2026, 3, 15), "gcash")
+    assert (n, total) == (3, 50000 + 100000 + 100000)
+    dates = [r[0] for r in conn.execute("SELECT received_date FROM payments WHERE method = 'gcash' ORDER BY id")]
+    assert dates == ["2026-01-01", "2026-02-01", "2026-03-01"]  # on each due date, never in the future
+    assert ledger.lease_balance(conn, lid) == 20000  # the debt is still owed
+    assert ledger.fill_rent_paid(conn, lid, date(2026, 3, 15), date(2026, 3, 15)) == (0, 0)
+
+
+def test_bill_from_move_in_rebuilds_rent(conn, owner_id):
+    lid = make_lease(conn, owner_id, start="2026-03-01", end=None, rent=100000, today=date(2026, 3, 15),
+                     billing_start="2026-03-01")
+    ledger.record_payment(conn, lid, 100000, "2026-03-02", "cash")
+    leases.bill_from_move_in(conn, lid, "2026-01-16", date(2026, 3, 15))
+    rows = conn.execute("SELECT period, amount_cents FROM charges WHERE lease_id = ? AND charge_type = 'rent' "
+                        "ORDER BY period", (lid,)).fetchall()
+    assert [r[0] for r in rows] == ["2026-01", "2026-02", "2026-03"]
+    assert rows[0][1] < 100000  # half of January, prorated
+    assert conn.execute("SELECT COUNT(*) FROM payments WHERE lease_id = ?", (lid,)).fetchone()[0] == 1
+    lease = leases.get_lease(conn, lid)
+    assert (lease["start_date"], lease["move_in_date"], lease["billing_start_date"]) == ("2026-01-16", "2026-01-16", None)
+    leases.bill_from_move_in(conn, lid, "2026-04-01", date(2026, 3, 15))  # a later date: not moved in yet
+    assert leases.get_lease(conn, lid)["status"] == "future"
+    assert conn.execute("SELECT COUNT(*) FROM charges WHERE lease_id = ? AND charge_type = 'rent'", (lid,)).fetchone()[0] == 0

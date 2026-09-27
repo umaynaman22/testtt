@@ -70,7 +70,7 @@ The app opens in its own window. If pywebview is not installed, it opens in your
 **Getting started:**
 
 1. **Units → Add unit.** Type its name or address (e.g. "Unit 2B Sunrise Apartments"), or leave everything blank and fill it in later.
-2. On the unit's page, click **Add tenant**. A name and the monthly rent are enough. For someone who already lives there, the app bills rent from this month; put anything they owed before in **Debt**.
+2. On the unit's page, click **Add tenant**. A name and the monthly rent are enough. Rent is billed from the **move-in date**, past months included. If they already paid those months, use **Fill in past rent → Mark rent as paid** on their page: it adds a payment for each month up to the date you pick. Put anything else they owe in **Debt**.
 3. When rent comes in, open the tenant and use **Record a payment**, or go to **Collect rent** to enter everyone's at once.
    To add something they owe besides rent, like a repair, use **Add debt** on the tenant's page.
 4. **Late** shows who is behind and by how many days. The dashboard shows the totals.
