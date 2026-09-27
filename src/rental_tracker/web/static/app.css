@@ -199,6 +199,12 @@ details.section > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 .tabs a:hover { text-decoration: none; color: var(--text); }
 
 /* ---- rent day ---- */
+details.edit-date > summary { list-style: none; cursor: pointer; border-bottom: 1px dashed var(--text-muted); display: inline; }
+details.edit-date > summary::-webkit-details-marker { display: none; }
+details.edit-date > summary:hover { color: var(--accent); border-bottom-color: var(--accent); }
+details.edit-date[open] > summary { display: none; }
+details.edit-date form { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+details.edit-date input { width: 128px; padding: 3px 4px; font-size: .88rem; }
 details.pay-line { display: inline-block; text-align: right; }
 details.pay-line > summary { list-style: none; cursor: pointer; }
 details.pay-line > summary::-webkit-details-marker { display: none; }

@@ -186,6 +186,18 @@ def pay_line(lease_id: int, charge_id: int):
     return _back(lease_id, "history")
 
 
+@bp.route("/leases/<int:lease_id>/date/<any(payment, charge):kind>/<int:entry_id>", methods=["POST"])
+def change_date(lease_id: int, kind: str, entry_id: int):
+    """Change the date of one line of the payment history."""
+    f = Form(request.form)
+    with attempt("Date changed"):
+        when = f.date("date", "Date")
+        f.check()
+        if when:
+            ledger.change_date(db(), lease_id, kind, entry_id, when)
+    return _back(lease_id, "history")
+
+
 @bp.route("/leases/<int:lease_id>/debt", methods=["POST"])
 def debt(lease_id: int):
     """Money owed besides rent. It's added to the balance like any other bill."""

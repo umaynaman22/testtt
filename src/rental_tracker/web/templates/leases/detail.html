@@ -74,7 +74,13 @@
         <tbody>
         {% for e in entries %}
           <tr class="{{ 'voided' if e.voided_at }}">
-            <td class="nowrap">{{ e.date|fdate }}</td>
+            <td class="nowrap">
+              <details class="edit-date"><summary title="Click to change the date">{{ e.date|fdate }}</summary>
+                <form method="post" action="{{ url_for('leases.change_date', lease_id=lease.id, kind=e.kind, entry_id=e.id) }}">
+                  {{ m.csrf() }}<input type="date" name="date" value="{{ e.date }}" aria-label="New date">
+                  <button class="btn small primary">Save</button>
+                </form>
+              </details></td>
             <td>{{ e.description }}{% if e.voided_at %} <span class="small keep">(voided: {{ e.void_reason }})</span>{% endif %}</td>
             <td class="num">{{ e.charge|money(true) }}</td>
             <td class="num {{ 'pos' if e.kind == 'payment' }}">

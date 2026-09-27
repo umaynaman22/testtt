@@ -45,11 +45,11 @@
       if (box) { box.focus(); box.select(); }
     }
   });
-  // "Mark paid" on a history line: put the cursor in the amount, ready to save or change for a part payment.
+  // "Mark paid" or a date on a history line: put the cursor in the box, ready to change and save.
   document.addEventListener("toggle", function (e) {
-    if (e.target.matches && e.target.matches("details.pay-line") && e.target.open) {
-      var input = e.target.querySelector("input[name='amount']");
-      if (input) { input.focus(); input.select(); }
+    if (e.target.matches && e.target.matches("details.pay-line, details.edit-date") && e.target.open) {
+      var input = e.target.querySelector("input:not([type='hidden'])");
+      if (input) { input.focus(); if (input.select) { input.select(); } }
     }
   }, true);
   // Select the whole amount when a field gets focus, so typing replaces it.

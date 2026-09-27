@@ -263,6 +263,28 @@ def test_mark_a_history_line_paid(app, client):
     assert q(app, f"SELECT COUNT(*) FROM payments WHERE lease_id = {lid}") == [2]  # someone else's line: nothing
 
 
+def test_change_dates_in_payment_history(app, client):
+    token = csrf(client)
+    pay, lid = dbmod.connect(app.extensions["rental_tracker"].data.db).execute(
+        "SELECT id, lease_id FROM payments ORDER BY id LIMIT 1").fetchone()
+    charge = q(app, f"SELECT id FROM charges WHERE lease_id = {lid} AND charge_type = 'rent' ORDER BY due_date LIMIT 1")[0]
+    page = client.get(f"/leases/{lid}").get_data(as_text=True)
+    assert f"/leases/{lid}/date/payment/{pay}" in page and f"/leases/{lid}/date/charge/{charge}" in page
+    r = client.post(f"/leases/{lid}/date/payment/{pay}", data={"csrf_token": token, "date": "2026-03-09"},
+                    follow_redirects=True)
+    assert "Date changed" in r.get_data(as_text=True)
+    assert q(app, f"SELECT received_date FROM payments WHERE id = {pay}") == ["2026-03-09"]
+    client.post(f"/leases/{lid}/date/charge/{charge}", data={"csrf_token": token, "date": "2026-03-05"})
+    assert q(app, f"SELECT due_date FROM charges WHERE id = {charge}") == ["2026-03-05"]
+    r = client.post(f"/leases/{lid}/date/charge/{charge}", data={"csrf_token": token, "date": "31/31/2026"},
+                    follow_redirects=True)
+    assert "error" in r.get_data(as_text=True) and q(app, f"SELECT due_date FROM charges WHERE id = {charge}") == ["2026-03-05"]
+    other = q(app, f"SELECT id FROM payments WHERE lease_id <> {lid} LIMIT 1")[0]
+    client.post(f"/leases/{lid}/date/payment/{other}", data={"csrf_token": token, "date": "2020-01-01"})
+    assert q(app, f"SELECT received_date FROM payments WHERE id = {other}") != ["2020-01-01"]  # not this tenant's
+    assert client.post(f"/leases/{lid}/date/tenant/1", data={"csrf_token": token, "date": "2026-01-01"}).status_code == 404
+
+
 def test_tenant_without_property_can_be_linked_later(app, client):
     token = csrf(client)
     r = client.post("/tenants/new", data={"csrf_token": token, "name": "Sam Lee"})

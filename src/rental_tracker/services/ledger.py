@@ -243,6 +243,23 @@ def fill_rent_paid(conn: sqlite3.Connection, lease_id: int, through: date, today
     return len(items), sum(amount for _, amount in items)
 
 
+def change_date(conn: sqlite3.Connection, lease_id: int, kind: str, entry_id: int, new_date: str) -> str:
+    """Change the date of one line of a tenant's history: a payment's date received, or a bill's due date.
+
+    Returns the old date. Money is re-applied from the new dates, as always.
+    """
+    table, column = {"payment": ("payments", "received_date"), "charge": ("charges", "due_date")}[kind]
+    row = row_or_error(conn, f"SELECT * FROM {table} WHERE id = ? AND lease_id = ?", (entry_id, lease_id), "Line")
+    new = parse_date(new_date).isoformat()
+    old = row[column]
+    if new == old:
+        return old
+    ensure_open(conn, min(old, new))
+    conn.execute(f"UPDATE {table} SET {column} = ? WHERE id = ?", (new, entry_id))
+    audit(conn, "update", kind, entry_id, {column: [old, new]})
+    return old
+
+
 def pay_line(conn: sqlite3.Connection, lease_id: int, charge_id: int, amount: int | None, today: date) -> dict:
     """Mark one line of the history (a rent bill, a debt…) as paid, or partly paid.
 
