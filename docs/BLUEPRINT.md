@@ -688,7 +688,7 @@ At the owner's request the app was **simplified to the essentials**: add a prope
 - **Collect rent:** a keyboard-driven grid for entering everyone's payments.
 - **Payment methods:** cash, check, bank transfer, GCash, or Other, where you type the method (e.g. "Maya"). Money is shown in Philippine pesos (₱). Migration 0003 rebuilds the payments table to allow these.
 - **Late:** who is behind, by how many days and how much; optional late fees that you charge or skip.
-- **Reports:** rent roll, who owes money, monthly collections, vacant units. All printable and exportable to CSV.
+- **Reports:** rent roll, who owes money, monthly collections. All printable and exportable to CSV.
 - **Settings:** your name for receipts, default late fee and grace days, when to bill rent, proration method.
 - **Delete:** on everything, with a confirmation page for properties, units and tenants.
 
@@ -698,6 +698,6 @@ At the owner's request the app was **simplified to the essentials**: add a prope
 - The audit log of every change.
 - The books lock and payment application rules described above.
 
-**Removed from the app:** owners, expenses and vendors (and the P&L, Schedule E, 1099 and performance reports that depend on them), CSV import, the Backups and Audit log pages, documents, tags, voiding, separate charges and credits, security deposits, moving out, lease end dates, tenant email, check/reference numbers, the window Back button, and the vacancy filter. The database still has the tables, so any of these can be brought back later.
+**Removed from the app:** owners, expenses and vendors (and the P&L, Schedule E, 1099 and performance reports that depend on them), CSV import, the Backups and Audit log pages, documents, tags, voiding, separate charges and credits, security deposits, moving out, lease end dates, tenant email, check/reference numbers, the window Back button, and vacant-unit lists (the dashboard list and occupancy box, the vacancy report and filter, vacant rows in the rent roll). A property page still shows an empty unit with an Add tenant button. The database still has the tables, so any of these can be brought back later.
 
 **Windows packaging:** GitHub Actions builds a per-user installer (Inno Setup) and a portable single-file `.exe` (PyInstaller) on every push. The build runs the tests on Windows, self-tests both builds, smoke-tests the app with demo data, and opens the real app window. See `packaging/` and `.github/workflows/windows-build.yml`.

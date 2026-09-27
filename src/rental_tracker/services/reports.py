@@ -9,7 +9,7 @@ from datetime import date
 from typing import Any
 
 from ..domain.allocation import BUCKETS, aging
-from ..domain.periods import parse_date, period_end, period_start
+from ..domain.periods import period_end, period_start
 from . import ledger
 from .common import csv_row
 
@@ -76,7 +76,8 @@ TENANTS_SQL = """(SELECT group_concat(t.first_name || ' ' || t.last_name, ', ')
 def rent_roll(conn: sqlite3.Connection, property_ids: list[int] | None = None) -> Report:
     flt, params = _in("property_id", property_ids)
     rows = [dict(r) for r in conn.execute(
-        f"SELECT * FROM v_rent_roll WHERE {flt} ORDER BY property_code, unit_label", params)]
+        f"SELECT * FROM v_rent_roll WHERE occupancy = 'occupied' AND {flt} ORDER BY property_code, unit_label",
+        params)]
     cols = [Column("property_code", "Property", link=("property", "property_id")),
             Column("unit_label", "Unit", link=("unit", "unit_id")),
             Column("tenants", "Tenants", link=("lease", "lease_id")),
@@ -84,14 +85,8 @@ def rent_roll(conn: sqlite3.Connection, property_ids: list[int] | None = None) -
             Column("current_rent_cents", "Rent", "money"),
             Column("balance_cents", "Balance", "money")]
     for r in rows:
-        if r["occupancy"] == "vacant":
-            r["tenants"], r["lease_status"] = "— vacant —", ""
         r["lease_status"] = (r["lease_status"] or "").replace("_", " ")
-    occupied = sum(r["occupancy"] == "occupied" for r in rows)
-    sub = f"{len(rows)} units · {occupied} occupied"
-    if rows:
-        sub += f" · {100 * occupied / len(rows):.1f}% occupancy"
-    return Report("rent-roll", "Rent roll", sub, cols, rows, _sum_totals(rows, cols, "property_code"))
+    return Report("rent-roll", "Rent roll", f"{len(rows)} tenants", cols, rows, _sum_totals(rows, cols, "property_code"))
 
 
 # ---- 2. Delinquency / aging --------------------------------------------------------
@@ -174,30 +169,8 @@ def collections(conn: sqlite3.Connection, period: str, property_ids: list[int] |
                    "money that arrived during the month, including payments toward older balances."])
 
 
-# ---- 4. Vacancy ----------------------------------------------------------------------
-
-def vacancy(conn: sqlite3.Connection, today: date, property_ids: list[int] | None = None) -> Report:
-    flt, params = _in("r.property_id", property_ids)
-    rows = [dict(r) for r in conn.execute(f"""
-        SELECT r.property_id, r.property_code, r.property_name, r.unit_id, r.unit_label, r.market_rent_cents,
-               (SELECT MAX(COALESCE(l.move_out_date, l.end_date)) FROM leases l
-                 WHERE l.unit_id = r.unit_id AND l.status IN ('ended','terminated')) AS vacant_since,
-               (SELECT MIN(l.start_date) FROM leases l WHERE l.unit_id = r.unit_id AND l.status = 'future') AS next_lease_start
-          FROM v_rent_roll r WHERE r.occupancy = 'vacant' AND {flt}
-         ORDER BY r.property_code, r.unit_label""", params)]
-    for r in rows:
-        r["days_vacant"] = (today - parse_date(r["vacant_since"])).days if r["vacant_since"] else None
-        r["lost_rent_cents"] = (r["market_rent_cents"] or 0) * (r["days_vacant"] or 0) // 30
-    cols = [Column("property_code", "Property", link=("property", "property_id")), Column("property_name", "Name"),
-            Column("unit_label", "Unit", link=("unit", "unit_id")), Column("vacant_since", "Vacant since", "date"),
-            Column("days_vacant", "Days vacant", "int"), Column("next_lease_start", "Next tenant moves in", "date")]
-    return Report("vacancy", "Vacant units", f"{len(rows)} vacant units as of {today.isoformat()}", cols, rows,
-                  None, ["Units that have never had a tenant in the app show no 'vacant since' date."])
-
-
 REPORTS = {
-    "rent-roll": ("Rent roll", "Every unit: who lives there, rent, balance"),
+    "rent-roll": ("Rent roll", "Every tenant: where they live, rent, balance"),
     "aging": ("Who owes money", "Unpaid amounts by how many days late"),
     "collections": ("Monthly collections", "Rent billed vs paid, per property"),
-    "vacancy": ("Vacant units", "Empty units and how long they've been empty"),
 }

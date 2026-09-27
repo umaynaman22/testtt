@@ -67,7 +67,7 @@ def test_every_page_renders(app, client):
              "/payments?format=csv", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=rizal",
              "/search?q=zzzz", f"/delete/property/{pid}", f"/delete/unit/{unit}", f"/delete/lease/{lease}",
              f"/delete/tenant/{tid}"]
-    for key in ("rent-roll", "aging", "collections", "vacancy"):
+    for key in ("rent-roll", "aging", "collections"):
         pages += [f"/reports/{key}", f"/reports/{key}?format=csv", f"/reports/{key}?property={pid}"]
     for lid in q(app, "SELECT id FROM leases"):
         pages += [f"/leases/{lid}", f"/leases/{lid}/edit", f"/leases/{lid}/statement"]
@@ -77,6 +77,7 @@ def test_every_page_renders(app, client):
     assert client.get("/properties/999999").status_code == 404
     assert client.get("/leases/999999").status_code == 404
     assert client.get("/reports/deposits").status_code == 404
+    assert client.get("/reports/vacancy").status_code == 404
     for gone in ("/expenses", "/vendors", "/owners", "/import", "/backups", "/audit", "/leases"):
         assert client.get(gone).status_code == 404, gone
 
@@ -202,12 +203,17 @@ def test_quit_button(app, client):
     assert called == [True]
 
 
-def test_no_back_button_or_vacancy_checkbox(app):
+def test_no_back_button_or_vacant_units(app):
     c = app.test_client()
     c.get(f"/auth?token={TOKEN}&window=1")
     assert "data-back" not in c.get("/").get_data(as_text=True)
     assert "← Back" not in c.get(f"/payments/{q(app, 'SELECT id FROM payments LIMIT 1')[0]}/receipt").get_data(as_text=True)
-    assert 'name="vacant"' not in c.get("/properties").get_data(as_text=True)
+    props = c.get("/properties").get_data(as_text=True)
+    assert 'name="vacant"' not in props and "vacant" not in props.lower()
+    home = c.get("/").get_data(as_text=True)
+    assert "Vacant" not in home and "Occupied" not in home
+    assert "vacant" not in c.get("/reports/rent-roll").get_data(as_text=True).lower()
+    assert "Vacant units" not in c.get("/reports").get_data(as_text=True)
 
 
 def test_payment_methods_and_no_ref(app, client):

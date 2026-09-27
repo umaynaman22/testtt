@@ -25,11 +25,6 @@
     <div class="value {{ 'neg' if d.owed }}">{{ d.owed|money }}</div>
     <div class="sub">including rent not yet late</div>
   </div>
-  <div class="kpi">
-    <div class="label"><a href="{{ url_for('reports.view', key='vacancy') }}">Occupied</a></div>
-    <div class="value">{{ d.occupied }} / {{ d.units }}</div>
-    <div class="sub">{{ d.units - d.occupied }} vacant</div>
-  </div>
 </section>
 
 <div class="split">
@@ -56,14 +51,6 @@
         <td><a href="{{ url_for('leases.detail', lease_id=p.lease_id) }}">{{ p.tenants }}</a></td>
         <td class="num">{{ p.amount_cents|money }}</td></tr>{% endfor %}</tbody></table>
       {% else %}<p class="muted">No payments yet.</p>{% endif %}
-    </div>
-    <div class="card">
-      <h2>Vacant</h2>
-      {% if d.vacant %}
-      <table class="compact"><tbody>{% for v in d.vacant %}<tr>
-        <td><a href="{{ url_for('properties.detail', pid=v.property_id) }}">{{ place(v.property_code, v.unit_label) }}</a></td>
-        <td class="actions"><a class="btn small" href="{{ url_for('leases.new', unit_id=v.unit_id) }}">Add tenant</a></td></tr>{% endfor %}</tbody></table>
-      {% else %}<p class="muted">Every unit has a tenant.</p>{% endif %}
     </div>
   </div>
 </div>

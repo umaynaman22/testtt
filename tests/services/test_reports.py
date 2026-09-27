@@ -40,11 +40,11 @@ def test_reports_and_dashboard(conn, owner_id):
     rent_posting.post_rent(conn, TODAY)
     ledger.record_payment(conn, lid, 250000, "2026-03-02", "check")
     rr = reports.rent_roll(conn)
-    assert len(rr.rows) == 3 and rr.totals["balance_cents"] == 50000 + 300000
+    assert [r["property_code"] for r in rr.rows] == ["A", "B"]  # empty units aren't listed
+    assert rr.totals["balance_cents"] == 50000 + 300000
     assert {r["property_code"] for r in reports.aging_report(conn, TODAY).rows} == {"A", "B"}
     coll = reports.collections(conn, "2026-03")
     assert coll.totals["billed_cents"] == 200000 and coll.totals["paid_cents"] == 50000
     assert "A" in coll.to_csv()
-    assert [r["property_code"] for r in reports.vacancy(conn, TODAY).rows] == ["Empty house"]
     d = dashboard.build(conn, TODAY)
-    assert d["units"] == 3 and d["occupied"] == 2 and len(d["late"]) == 2 and d["owed"] == 350000
+    assert len(d["late"]) == 2 and d["owed"] == 350000 and "vacant" not in d

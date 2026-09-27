@@ -1,4 +1,4 @@
-"""Numbers for the dashboard: collected, owed, who's late, vacancies."""
+"""Numbers for the dashboard: collected, owed and who's late."""
 from __future__ import annotations
 
 import sqlite3
@@ -15,15 +15,12 @@ def build(conn: sqlite3.Connection, today: date) -> dict:
     billed, paid = totals.get("billed_cents", 0), totals.get("paid_cents", 0)
     rows = tenants.tenancies(conn, today=today, status="all")
     late = sorted((r for r in rows if r["past_due_cents"] > 0), key=lambda r: (-r["days_late"], -r["past_due_cents"]))
-    occ = conn.execute("SELECT COUNT(*) AS units, SUM(occupancy = 'occupied') AS occupied FROM v_rent_roll").fetchone()
-    units, occupied = occ["units"] or 0, occ["occupied"] or 0
     return {
         "period_start": period_start(period),
         "billed": billed, "paid": paid, "received": totals.get("received_cents", 0),
         "paid_pct": 100 * paid / billed if billed else None,
         "owed": sum(max(r["balance_cents"], 0) for r in rows),
         "late": late, "late_total": sum(r["past_due_cents"] for r in late),
-        "units": units, "occupied": occupied, "vacant": reports.vacancy(conn, today).rows[:8],
         "recent_payments": ledger.list_payments(conn, include_voided=False, limit=8),
         "late_fee_count": len(late_fees.find_candidates(conn, today)),
         "property_count": conn.execute("SELECT COUNT(*) FROM properties WHERE status = 'active'").fetchone()[0],
