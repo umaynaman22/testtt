@@ -16,7 +16,7 @@ from ..forms import Form
 from . import current_period, options, safe_next
 
 bp = Blueprint("rentday", __name__)
-METHOD_LABELS = {"app_transfer": "App (Zelle, Venmo…)", "housing_assistance": "Housing assistance"}
+METHODS = options(ledger.PAYMENT_METHODS, ledger.METHOD_LABELS)
 
 
 def _period_arg() -> str:
@@ -39,7 +39,7 @@ def index():
               "unpaid": sum(r["state"] != "paid" for r in rows)}
     return render_template("rentday/index.html", rows=rows, period=period, show=show, totals=totals,
                            prev=add_periods(period, -1), next=add_periods(period, 1),
-                           methods=options(ledger.PAYMENT_METHODS, METHOD_LABELS),
+                           methods=METHODS,
                            pay_date=min(today(), period_end(period)).isoformat()
                            if period_start(period) <= today() else period_start(period).isoformat())
 
@@ -66,7 +66,7 @@ def pay():
                 if amount > limit:
                     raise ValueError(f"{format_money(amount)} is far more than this lease owes. "
                                      "If it's right, record it on the lease page.")
-            pid = ledger.record_payment(db(), lease_id, amount, when, method, f.str("reference"))
+            pid = ledger.record_payment(db(), lease_id, amount, when, method, method_other=f.str("method_other"))
             saved = ledger.get_payment(db(), pid)
     except ValueError as e:
         error = str(e)
@@ -74,8 +74,8 @@ def pay():
         return redirect(url_for("rentday.index", period=period))
     row = rentday.rows(db(), period, lease_id=lease_id)[0]
     return render_template("rentday/_row.html", r=row, period=period, saved=saved, error=error,
-                           methods=options(ledger.PAYMENT_METHODS, METHOD_LABELS), pay_date=f.raw("received_date"),
-                           method=f.raw("method"))
+                           methods=METHODS, pay_date=f.raw("received_date"),
+                           method=f.raw("method"), method_other=f.raw("method_other"))
 
 
 @bp.route("/rent-day/post-rent", methods=["POST"])
@@ -117,17 +117,18 @@ def payments():
     if request.args.get("format") == "csv":
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["date", "receipt", "property", "unit", "tenants", "method", "reference", "amount", "voided", "void_reason"])
+        w.writerow(["date", "receipt", "property", "unit", "tenants", "method", "amount", "voided", "void_reason"])
         for r in rows:
             w.writerow(csv_row([r["received_date"], r["receipt_number"], r["property_code"], r["unit_label"],
-                                r["tenants"], r["method"], r["reference"] or "", f"{r['amount_cents'] / 100:.2f}",
+                                r["tenants"], ledger.method_name(r["method"], r["method_other"]),
+                                f"{r['amount_cents'] / 100:.2f}",
                                 "yes" if r["voided_at"] else "", r["void_reason"] or ""]))
         return Response(buf.getvalue(), mimetype="text/csv",
                         headers={"Content-Disposition": f"attachment; filename=payments-{start}-to-{end}.csv"})
     total = sum(r["amount_cents"] for r in rows if not r["voided_at"])
     props = [(p["id"], p["code"]) for p in portfolio.list_properties(db(), status="all")]
     return render_template("rentday/payments.html", rows=rows, total=total, start=start, end=end,
-                           methods=options(ledger.PAYMENT_METHODS, METHOD_LABELS), props=props)
+                           methods=METHODS, props=props)
 
 
 @bp.route("/payments/<int:payment_id>/delete", methods=["POST"])

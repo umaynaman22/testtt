@@ -10,7 +10,6 @@
   <label class="field"><span>Sort</span><select name="sort">
     {% for k, t in [('name','Name'),('city','City'),('occupancy','Most vacant first'),('balance','Most owed first')] %}
     <option value="{{ k }}" {{ 'selected' if request.args.get('sort', 'name') == k }}>{{ t }}</option>{% endfor %}</select></label>
-  <label class="field check"><input type="checkbox" name="vacant" value="1" {{ 'checked' if request.args.get('vacant') }}><span>Has a vacancy</span></label>
   <button class="btn">Filter</button>
   {% if request.args %}<a class="btn link" href="{{ url_for('properties.index') }}">Clear</a>{% endif %}
 </form>

@@ -8,8 +8,8 @@
   <div class="form-grid">
     {{ m.input("name", "Address or name", wide=True, placeholder="e.g. 12 Maple St", attrs='autofocus') }}
     {{ m.input("city", "City") }}
-    {{ m.input("state", "State") }}
-    {{ m.input("postal_code", "ZIP") }}
+    {{ m.input("state", "Province") }}
+    {{ m.input("postal_code", "ZIP code") }}
     {% if not prop %}{{ m.input("units", "Units", help="Leave blank for a house. For an apartment building, type how many units (e.g. 4) or their names (e.g. A, B, C).") }}{% endif %}
     {{ m.textarea("notes", "Notes") }}
   </div>

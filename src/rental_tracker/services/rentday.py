@@ -35,7 +35,9 @@ def rows(conn: sqlite3.Connection, period: str, *, q: str = "", tag_id: int | No
                           AND pay.received_date BETWEEN ? AND ? AND pay.voided_at IS NULL), 0) AS paid_cents,
                b.balance_cents, cr.current_rent_cents,
                (SELECT pay.method FROM payments pay WHERE pay.lease_id = l.id AND pay.voided_at IS NULL
-                 ORDER BY pay.received_date DESC, pay.id DESC LIMIT 1) AS last_method
+                 ORDER BY pay.received_date DESC, pay.id DESC LIMIT 1) AS last_method,
+               (SELECT pay.method_other FROM payments pay WHERE pay.lease_id = l.id AND pay.voided_at IS NULL
+                 ORDER BY pay.received_date DESC, pay.id DESC LIMIT 1) AS last_method_other
           FROM leases l JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id
           JOIN v_lease_balances b ON b.lease_id = l.id
           JOIN v_lease_current_rent cr ON cr.lease_id = l.id

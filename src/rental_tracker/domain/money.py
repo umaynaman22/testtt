@@ -1,16 +1,18 @@
-"""Money is always integer cents (BLUEPRINT §7.1)."""
+"""Money is always integer cents (BLUEPRINT §7.1), shown in Philippine pesos (₱)."""
 from __future__ import annotations
 
 import re
 
 _AMOUNT_RE = re.compile(r"(\d+)(?:\.(\d{0,2}))?|\.(\d{1,2})")
+_CURRENCY_RE = re.compile(r"₱|php|\$", re.IGNORECASE)
+SYMBOL = "₱"
 
 
 def parse_money(text: str | None) -> int:
-    """Parse user input such as '1,250.50', '$1250.5', '-12' or '(12.00)' into cents."""
+    """Parse user input such as '1,250.50', '₱1250.5', 'PHP 1,250', '-12' or '(12.00)' into cents."""
     if text is None:
         raise ValueError("amount is required")
-    s = str(text).strip().replace(",", "").replace("$", "").replace(" ", "")
+    s = _CURRENCY_RE.sub("", str(text)).replace(",", "").replace(" ", "").strip()
     if not s:
         raise ValueError("amount is required")
     negative = False
@@ -29,7 +31,7 @@ def parse_money(text: str | None) -> int:
     return -cents if negative else cents
 
 
-def format_money(cents: int | None, symbol: str = "$") -> str:
+def format_money(cents: int | None, symbol: str = SYMBOL) -> str:
     if cents is None:
         return ""
     sign = "-" if cents < 0 else ""

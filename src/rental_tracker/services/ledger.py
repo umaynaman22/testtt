@@ -14,10 +14,18 @@ CHARGE_TYPES = ("rent", "late_fee", "pet_rent", "parking", "storage", "utility",
                 "repair_billback", "nsf_fee", "legal_fee", "opening_balance", "credit", "other")
 MANUAL_CHARGE_TYPES = ("utility", "damage", "repair_billback", "late_fee", "nsf_fee", "legal_fee",
                        "pet_rent", "parking", "storage", "rent", "other")
-PAYMENT_METHODS = ("check", "cash", "money_order", "bank_transfer", "card", "app_transfer",
-                   "housing_assistance", "other")
+PAYMENT_METHODS = ("cash", "check", "bank_transfer", "gcash", "other")
+METHOD_LABELS = {"cash": "Cash", "check": "Check", "bank_transfer": "Bank transfer", "gcash": "GCash",
+                 "other": "Other", "app_transfer": "App transfer", "deposit_applied": "From deposit"}
 DEPOSIT_TYPES = ("received", "interest", "deduction", "refund", "applied_to_balance")
 DEPOSIT_OUTFLOWS = ("deduction", "refund", "applied_to_balance")
+
+
+def method_name(method: str | None, other: str | None = None) -> str:
+    """How a payment was made, for screens and receipts: 'GCash', or what was typed for Other."""
+    if method == "other" and other:
+        return other
+    return METHOD_LABELS.get(method or "", (method or "").replace("_", " ").capitalize())
 
 
 def _positive(amount: int | None, what: str = "Amount") -> int:
@@ -103,9 +111,7 @@ def ledger_entries(conn: sqlite3.Connection, lease_id: int) -> list[dict]:
                      "voided_at": r["voided_at"], "void_reason": r["void_reason"],
                      "source": r["source"], "sort": (r["due_date"], 0, r["id"])})
     for r in conn.execute("SELECT * FROM payments WHERE lease_id = ?", (lease_id,)):
-        desc = f"Payment — {r['method'].replace('_', ' ')}"
-        if r["reference"]:
-            desc += f" #{r['reference']}"
+        desc = f"Payment — {method_name(r['method'], r['method_other'])}"
         rows.append({"kind": "payment", "id": r["id"], "date": r["received_date"], "type": r["method"],
                      "description": desc, "period": None, "charge": 0, "credit": r["amount_cents"],
                      "voided_at": r["voided_at"], "void_reason": r["void_reason"],
@@ -176,23 +182,29 @@ def next_receipt_number(conn: sqlite3.Connection, year: int) -> str:
 
 def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, received: str | None,
                    method: str | None, reference: str | None = None, notes: str | None = None,
-                   paid_by_tenant_id: int | None = None, allow_deposit_method: bool = False) -> int:
-    """Record money received. Date defaults to today and method to 'other'."""
+                   paid_by_tenant_id: int | None = None, allow_deposit_method: bool = False,
+                   method_other: str | None = None) -> int:
+    """Record money received. Date defaults to today and method to 'other'.
+
+    method_other is what was typed for "Other" (e.g. 'PayMaya'); it's ignored for the other methods.
+    """
     _positive(amount, "The amount paid")
     received = received or date.today().isoformat()
     method = method or "other"
     if method not in PAYMENT_METHODS and not (allow_deposit_method and method == "deposit_applied"):
         raise ServiceError("Unknown payment method")
+    method_other = (" ".join((method_other or "").split())[:60] or None) if method == "other" else None
     lease_row(conn, lease_id)
     received_d = parse_date(received)
     ensure_open(conn, received_d)
     cur = conn.execute(
         """INSERT INTO payments(lease_id, paid_by_tenant_id, received_date, amount_cents, method,
-                                reference, receipt_number, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (lease_id, paid_by_tenant_id, received_d.isoformat(), amount, method, reference or None,
+                                method_other, reference, receipt_number, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (lease_id, paid_by_tenant_id, received_d.isoformat(), amount, method, method_other, reference or None,
          next_receipt_number(conn, received_d.year), notes or None))
-    audit(conn, "insert", "payment", cur.lastrowid, {"lease_id": lease_id, "amount": amount, "method": method})
+    audit(conn, "insert", "payment", cur.lastrowid, {"lease_id": lease_id, "amount": amount, "method": method,
+                                                         "method_other": method_other})
     return cur.lastrowid
 
 

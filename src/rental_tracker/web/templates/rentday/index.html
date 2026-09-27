@@ -22,9 +22,9 @@
 </form>
 {% if rows %}
 <div class="table-wrap rentday"><table>
-  <thead><tr><th>Property</th><th>Tenant</th><th class="num">This month</th><th class="num">Balance</th><th>Amount</th><th>Date</th><th>Method</th><th>Ref</th><th></th></tr></thead>
+  <thead><tr><th>Property</th><th>Tenant</th><th class="num">This month</th><th class="num">Balance</th><th>Amount</th><th>Date</th><th>Method</th><th></th></tr></thead>
   <tbody>
-    {% for r in rows %}{% set saved = none %}{% set error = none %}{% set method = none %}{% include "rentday/_row.html" %}{% endfor %}
+    {% for r in rows %}{% set saved = none %}{% set error = none %}{% set method = none %}{% set method_other = none %}{% include "rentday/_row.html" %}{% endfor %}
   </tbody></table></div>
 {% else %}<div class="card empty">No tenants{% if request.args.get('q') or show != 'all' %} match these filters{% endif %}.</div>{% endif %}
 {% endblock %}

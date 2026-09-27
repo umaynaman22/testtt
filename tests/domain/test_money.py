@@ -5,8 +5,9 @@ from rental_tracker.domain.money import cents_to_input, format_money, parse_mone
 
 
 @pytest.mark.parametrize("text,cents", [
-    ("1250", 125000), ("1,250.50", 125050), ("$1250.5", 125050), (" 0.07 ", 7),
-    (".5", 50), ("-12", -1200), ("(12.00)", -1200), ("$-3.10", -310), ("0", 0),
+    ("1250", 125000), ("1,250.50", 125050), ("₱1250.5", 125050), ("PHP 1,250.50", 125050), ("php1250", 125000),
+    ("$1250.5", 125050), (" 0.07 ", 7),
+    (".5", 50), ("-12", -1200), ("(12.00)", -1200), ("₱-3.10", -310), ("0", 0),
 ])
 def test_parse_money(text, cents):
     assert parse_money(text) == cents
@@ -19,9 +20,9 @@ def test_parse_money_rejects(bad):
 
 
 def test_format_money():
-    assert format_money(125050) == "$1,250.50"
-    assert format_money(-7) == "-$0.07"
-    assert format_money(0) == "$0.00"
+    assert format_money(125050) == "₱1,250.50"
+    assert format_money(-7) == "-₱0.07"
+    assert format_money(0) == "₱0.00"
 
 
 @given(st.integers(min_value=-10**12, max_value=10**12))

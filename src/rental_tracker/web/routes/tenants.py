@@ -6,7 +6,7 @@ import io
 
 from flask import Blueprint, Response, redirect, render_template, request, url_for
 
-from ...domain.money import format_money
+from ...domain.money import cents_to_input
 from ...services import tenants
 from ...services.common import csv_row
 from .. import attempt, db, today
@@ -29,8 +29,8 @@ def index():
         w.writerow(["tenant", "property", "unit", "phone", "rent", "balance", "overdue", "days late", "last paid"])
         for r in rows:
             w.writerow(csv_row([r["names"], r["property_code"] or "", r["unit_label"] or "", r["phone"] or "",
-                                format_money(r["current_rent_cents"]) if r["current_rent_cents"] is not None else "",
-                                format_money(r["balance_cents"]), format_money(r["past_due_cents"]),
+                                cents_to_input(r["current_rent_cents"]),
+                                cents_to_input(r["balance_cents"]), cents_to_input(r["past_due_cents"]),
                                 r["days_late"] or "", r["last_paid_on"] or ""]))
         return Response(buf.getvalue(), mimetype="text/csv",
                         headers={"Content-Disposition": "attachment; filename=tenants.csv"})

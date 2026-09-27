@@ -84,10 +84,22 @@ def migrate(conn: sqlite3.Connection, before: Callable[[], object] | None = None
         before()
     for version, path in pending:
         sql = path.read_text(encoding="utf-8")
+        # Rebuilding a table (to change a CHECK constraint) needs foreign keys off. The pragma
+        # does nothing inside a transaction, so switch it before BEGIN and check keys before COMMIT.
+        rebuild = "-- requires: foreign_keys=off" in sql
+        if rebuild:
+            conn.execute("PRAGMA foreign_keys = OFF")
         try:
-            conn.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version = {version};\nCOMMIT;")
+            conn.executescript(f"BEGIN;\n{sql}\n")
+            if rebuild and conn.execute("PRAGMA foreign_key_check").fetchone():
+                raise sqlite3.IntegrityError(f"migration {path.name} left broken foreign keys")
+            conn.execute(f"PRAGMA user_version = {version}")
+            conn.execute("COMMIT")
         except BaseException:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
             raise
+        finally:
+            if rebuild:
+                conn.execute("PRAGMA foreign_keys = ON")
     return len(pending)

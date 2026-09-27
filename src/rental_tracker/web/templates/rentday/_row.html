@@ -9,8 +9,10 @@
   <td><input class="amt" name="amount" inputmode="decimal" aria-label="Amount for {{ r.property_code }} {{ r.unit_label }}"
              value="{{ r.balance_cents|input_money if r.balance_cents > 0 else '' }}" placeholder="0.00"></td>
   <td><input type="date" name="received_date" value="{{ pay_date }}" aria-label="Date received"></td>
-  <td><select name="method" aria-label="How they paid"><option value="">—</option>{% for v, t in methods %}<option value="{{ v }}" {{ 'selected' if v == (method or r.last_method) }}>{{ t }}</option>{% endfor %}</select></td>
-  <td><input class="ref" name="reference" placeholder="Note" aria-label="Check number or note"></td>
+  {% set chosen = method if method is not none else r.last_method %}
+  <td><select name="method" data-method aria-label="How they paid"><option value="">—</option>{% for v, t in methods %}<option value="{{ v }}" {{ 'selected' if v == chosen }}>{{ t }}</option>{% endfor %}</select>
+    <input class="method-other" name="method_other" maxlength="60" autocomplete="off" placeholder="Type how they paid" aria-label="Other method"
+           value="{{ method_other if method is not none else (r.last_method_other or '') }}"></td>
   <td><input type="hidden" name="lease_id" value="{{ r.lease_id }}"><input type="hidden" name="period" value="{{ period }}">
     <button class="btn small primary" data-save hx-post="{{ url_for('rentday.pay') }}" hx-include="closest tr"
             hx-target="closest tr" hx-swap="outerHTML">Save</button></td>

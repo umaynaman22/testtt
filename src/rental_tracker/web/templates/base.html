@@ -20,7 +20,6 @@
   <a class="brand" href="{{ url_for('main.dashboard') }}">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>
     Rental Tracker</a>
-  {% if in_window %}<button type="button" class="btn small back-btn" data-back aria-label="Go back">← Back</button>{% endif %}
   <form class="search" action="{{ url_for('main.search') }}" role="search">
     <input id="global-search" name="q" placeholder="Search  (Ctrl+K)" aria-label="Search" value="{{ request.args.get('q', '') if request.endpoint == 'main.search' else '' }}">
   </form>

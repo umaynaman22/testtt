@@ -4,7 +4,8 @@ A simple rental tracker that runs **entirely on your own computer, with no inter
 
 - **Add a property**, then **add a tenant** to it. Every field is optional.
 - Rent is **billed automatically** each month.
-- **Record payments**, one at a time or all at once on the *Collect rent* screen.
+- **Record payments**, one at a time or all at once on the *Collect rent* screen: cash, check, bank transfer, GCash, or type in any other method.
+- All amounts are in **Philippine pesos (₱)**.
 - **Add debt** for anything a tenant owes besides rent.
 - See **balances**, **who's late** and by how many days, and each tenant's full **payment history**.
 - Print receipts and statements, and export lists for Excel.

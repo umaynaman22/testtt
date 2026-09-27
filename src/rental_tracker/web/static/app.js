@@ -16,8 +16,6 @@
     if (msg && !window.confirm(msg)) { e.preventDefault(); }
   }, true);
   document.addEventListener("click", function (e) {
-    var back = e.target.closest("[data-back]");
-    if (back) { e.preventDefault(); window.history.back(); }
     var t = e.target.closest("[data-print]");
     if (t) { e.preventDefault(); window.print(); }
     var all = e.target.closest("[data-check-all]");
@@ -39,8 +37,16 @@
     var input = target && target.querySelector("input.amt");
     if (input) { input.focus(); input.select(); }
   });
+  // Picking "Other" as the payment method: jump to the box to type it in (CSS shows the box).
+  document.addEventListener("change", function (e) {
+    if (e.target.matches && e.target.matches("select[data-method]") && e.target.value === "other") {
+      var scope = e.target.closest("tr, form");
+      var box = scope && scope.querySelector("input[name='method_other']");
+      if (box) { box.focus(); box.select(); }
+    }
+  });
   // Select the whole amount when a field gets focus, so typing replaces it.
   document.addEventListener("focusin", function (e) {
-    if (e.target.matches && e.target.matches("input.amt")) { e.target.select(); }
+    if (e.target.matches && e.target.matches("input.amt, input[name='method_other']")) { e.target.select(); }
   });
 })();

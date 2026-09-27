@@ -7,6 +7,7 @@ from flask import Flask, request, url_for
 from markupsafe import Markup, escape
 
 from ..domain.money import cents_to_input, format_money
+from ..services.ledger import method_name
 
 REPORT_LINKS = {
     "property": ("properties.detail", "pid"),
@@ -48,6 +49,12 @@ def pct(value, digits: int = 1) -> str:
 
 def label(value) -> str:
     return "" if value is None else str(value).replace("_", " ").capitalize()
+
+
+def pay_method(payment) -> str:
+    """'GCash', 'Cash', or whatever was typed for Other."""
+    keys = payment.keys()
+    return method_name(payment["method"], payment["method_other"] if "method_other" in keys else None)
 
 
 def badge(status) -> Markup:
@@ -104,5 +111,6 @@ def register(app: Flask) -> None:
     app.add_template_filter(pct)
     app.add_template_filter(label)
     app.add_template_filter(badge)
+    app.add_template_filter(pay_method)
     app.add_template_filter(cents_to_input, "input_money")
     app.jinja_env.globals.update(cell=cell, url_with=url_with, place=place)

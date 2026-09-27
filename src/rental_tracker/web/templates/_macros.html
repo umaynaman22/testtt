@@ -37,6 +37,17 @@
 </label>
 {%- endmacro %}
 
+{% macro pay_method(methods, value="", other="") -%}
+{# The "Other" text box shows when Other is picked (CSS :has, so it works without JavaScript). #}
+<label class="field"><span>How they paid</span>
+  <select name="method" data-method>
+    <option value="">—</option>
+    {% for v, t in methods %}<option value="{{ v }}" {{ 'selected' if v == value }}>{{ t }}</option>{% endfor %}
+  </select></label>
+<label class="field method-other"><span>Other method</span>
+  <input name="method_other" value="{{ other or '' }}" placeholder="Type how they paid" maxlength="60" autocomplete="off"></label>
+{%- endmacro %}
+
 {% macro checkbox(name, label, checked=False) -%}
 <label class="field check"><input type="checkbox" name="{{ name }}" value="1" {{ 'checked' if checked }}><span>{{ label }}</span></label>
 {%- endmacro %}

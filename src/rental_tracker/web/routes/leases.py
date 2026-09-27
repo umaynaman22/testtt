@@ -19,7 +19,6 @@ from . import options
 from .tenants import person_fields
 
 bp = Blueprint("leases", __name__)
-METHOD_LABELS = {"app_transfer": "App (Zelle, Venmo…)", "card": "Card", "housing_assistance": "Housing assistance"}
 
 
 def _unit_options(conn, keep_unit: int | None = None):
@@ -110,7 +109,7 @@ def detail(lease_id: int):
         names=leases.tenant_names(conn, lease_id) or "Tenant",
         entries=list(reversed(entries)), summary=ledger.lease_summary(conn, lease_id, today()),
         last_payment=payments[-1] if payments else None,
-        methods=options(ledger.PAYMENT_METHODS, METHOD_LABELS), values={})
+        methods=options(ledger.PAYMENT_METHODS, ledger.METHOD_LABELS), values={})
 
 
 def _back(lease_id: int, anchor: str = ""):
@@ -125,7 +124,7 @@ def payment(lease_id: int):
         when = f.date("received_date", "Date")
         f.check()
         r["id"] = ledger.record_payment(db(), lease_id, amount, when, f.raw("method") or None,
-                                        f.str("reference"), f.str("notes"))
+                                        notes=f.str("notes"), method_other=f.str("method_other"))
     if r["done"] and f.bool("print_receipt"):
         return redirect(url_for("rentday.receipt", payment_id=r["id"]))
     return _back(lease_id, "history")

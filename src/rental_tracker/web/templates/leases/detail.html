@@ -32,8 +32,7 @@
         <div class="form-grid">
           {{ m.money("amount", "Amount", value=(s.balance|input_money if s.balance > 0 else '')) }}
           {{ m.date("received_date", "Date", value=today.isoformat()) }}
-          {{ m.select("method", "How they paid", methods, blank="—", value="") }}
-          {{ m.input("reference", "Check # / note", value="") }}
+          {{ m.pay_method(methods) }}
         </div>
         <div class="actions"><button class="btn primary">Save payment</button>
           <label class="small" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" name="print_receipt" value="1"> print a receipt</label></div>

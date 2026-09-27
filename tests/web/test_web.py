@@ -60,11 +60,11 @@ def test_post_requires_csrf(client):
 def test_every_page_renders(app, client):
     pid, unit, lease, tid, pay = (q(app, f"SELECT id FROM {t} LIMIT 1")[0]
                                   for t in ("properties", "units", "leases", "tenants", "payments"))
-    pages = ["/", "/properties", "/properties?vacant=1&sort=balance", "/properties/new", f"/properties/{pid}",
+    pages = ["/", "/properties", "/properties?sort=balance", "/properties/new", f"/properties/{pid}",
              f"/properties/{pid}/edit", f"/units/{unit}", "/tenants", "/tenants?q=lee",
              "/tenants?format=csv", "/tenants/new", f"/tenants/new?unit_id={unit}", f"/tenants/{tid}",
              f"/tenants/{tid}/edit", "/rent-day", "/rent-day?period=2026-08&show=unpaid", "/late", "/payments",
-             "/payments?format=csv", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=maple",
+             "/payments?format=csv", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=rizal",
              "/search?q=zzzz", f"/delete/property/{pid}", f"/delete/unit/{unit}", f"/delete/lease/{lease}",
              f"/delete/tenant/{tid}"]
     for key in ("rent-roll", "aging", "collections", "vacancy"):
@@ -202,10 +202,51 @@ def test_quit_button(app, client):
     assert called == [True]
 
 
-def test_window_mode_shows_back_button(app):
+def test_no_back_button_or_vacancy_checkbox(app):
     c = app.test_client()
     c.get(f"/auth?token={TOKEN}&window=1")
-    assert "data-back" in c.get("/").get_data(as_text=True)
+    assert "data-back" not in c.get("/").get_data(as_text=True)
+    assert "← Back" not in c.get(f"/payments/{q(app, 'SELECT id FROM payments LIMIT 1')[0]}/receipt").get_data(as_text=True)
+    assert 'name="vacant"' not in c.get("/properties").get_data(as_text=True)
+
+
+def test_payment_methods_and_no_ref(app, client):
+    token = csrf(client)
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' LIMIT 1")[0]
+    page = client.get(f"/leases/{lid}").get_data(as_text=True)
+    methods = re.findall(r'<option value="([a-z_]+)"', page.split('name="method"')[1].split("</select>")[0])
+    assert methods == ["cash", "check", "bank_transfer", "gcash", "other"]
+    assert 'name="reference"' not in page and 'name="method_other"' in page
+    client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": "100", "method": "gcash"})
+    client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": "100", "method": "other",
+                                                "method_other": "  Maya   wallet "})
+    client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": "100", "method": "cash",
+                                                "method_other": "ignored"})
+    rows = [tuple(r) for r in dbmod.connect(app.extensions["rental_tracker"].data.db).execute(
+        f"SELECT method, method_other FROM payments WHERE lease_id = {lid} ORDER BY id DESC LIMIT 3")]
+    assert rows == [("cash", None), ("other", "Maya wallet"), ("gcash", None)]
+    other = q(app, f"SELECT id FROM payments WHERE lease_id = {lid} AND method = 'other' ORDER BY id DESC LIMIT 1")[0]
+    assert "Maya wallet" in client.get(f"/payments/{other}/receipt").get_data(as_text=True)
+    assert "Payment — Maya wallet" in client.get(f"/leases/{lid}").get_data(as_text=True)
+    listing = client.get("/payments").get_data(as_text=True)
+    assert "Maya wallet" in listing and "GCash" in listing and "<th>Ref</th>" not in listing
+    assert "Maya wallet" in client.get("/payments?format=csv").get_data(as_text=True)
+    grid = client.get("/rent-day").get_data(as_text=True)
+    assert "<th>Ref</th>" not in grid and 'name="reference"' not in grid
+    r = client.post("/rent-day/pay", data={"lease_id": lid, "amount": "50", "method": "other", "method_other": "Coins.ph",
+                                           "period": "2026-09"}, headers={"HX-Request": "true", "X-CSRF-Token": token})
+    assert "Saved" in r.get_data(as_text=True)
+    assert q(app, f"SELECT method_other FROM payments WHERE lease_id = {lid} ORDER BY id DESC LIMIT 1") == ["Coins.ph"]
+    assert 'value="Coins.ph"' in r.get_data(as_text=True)  # the row keeps it for next time
+    client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": "1", "method": "money_order"})
+    assert q(app, f"SELECT COUNT(*) FROM payments WHERE lease_id = {lid} AND method = 'money_order'")[0] == 0
+
+
+def test_money_is_in_pesos(client):
+    for page in ("/", "/properties", "/tenants", "/rent-day", "/payments", "/late", "/reports/rent-roll"):
+        html = client.get(page).get_data(as_text=True)
+        assert "₱" in html, page
+        assert not re.search(r"\$\d", html), page
 
 
 def test_delete_pages(app, client):

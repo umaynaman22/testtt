@@ -18,8 +18,7 @@ def _fields(f: Form) -> dict:
 @bp.route("/properties")
 def index():
     a = request.args
-    rows = portfolio.list_properties(db(), q=a.get("q", ""), status="active",
-                                     vacant_only=a.get("vacant") == "1", sort=a.get("sort", "name"))
+    rows = portfolio.list_properties(db(), q=a.get("q", ""), status="active", sort=a.get("sort", "name"))
     totals = {"units": sum(r["units"] for r in rows), "occupied": sum(r["occupied"] for r in rows),
               "rent": sum(r["rent_cents"] for r in rows), "balance": sum(r["balance_cents"] for r in rows)}
     return render_template("properties/index.html", rows=rows, totals=totals)
