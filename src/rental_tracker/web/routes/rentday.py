@@ -12,7 +12,7 @@ from ...domain.periods import add_periods, parse_period, period_end, period_star
 from ...services import deletion, late_fees, ledger, portfolio, rent_posting, rentday, tenants
 from ...services.common import csv_row, get_setting
 from .. import attempt, db, today
-from ..forms import Form
+from ..forms import Form, record_id
 from . import current_period, options, safe_next
 
 bp = Blueprint("rentday", __name__)
@@ -111,7 +111,7 @@ def payments():
     t = today()
     start = request.args.get("start") or period_start(current_period(t)).isoformat()
     end = request.args.get("end") or t.isoformat()
-    pid = request.args.get("property", type=int)
+    pid = record_id(request.args.get("property"))
     rows = ledger.list_payments(db(), start=start, end=end, method=request.args.get("method") or None,
                                 property_ids=[pid] if pid else None, limit=5000)
     if request.args.get("format") == "csv":

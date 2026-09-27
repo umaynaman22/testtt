@@ -97,35 +97,34 @@ def period_status(conn: sqlite3.Connection, period: str, lease_ids: Iterable[int
 
 
 def ledger_entries(conn: sqlite3.Connection, lease_id: int) -> list[dict]:
-    """Charges and payments in date order with a running balance (voided rows shown, not counted)."""
+    """Charges and payments in date order with a running balance. Deleted (voided) lines are left out."""
     rows: list[dict] = []
     charges, payments = load_ledgers(conn, [lease_id]).get(lease_id, ([], []))
     unpaid = allocate(charges, payments, payment_order(conn)).unpaid
     names = {}
     for r in conn.execute("SELECT * FROM charges WHERE lease_id = ?", (lease_id,)):
         names[r["id"]] = r["description"] or r["charge_type"].replace("_", " ").capitalize()
+        if r["voided_at"]:
+            continue
         rows.append({"kind": "charge", "id": r["id"], "date": r["due_date"], "type": r["charge_type"],
                      "description": names[r["id"]],
                      "period": r["period"], "charge": r["amount_cents"] if r["amount_cents"] > 0 else 0,
                      "credit": -r["amount_cents"] if r["amount_cents"] < 0 else 0,
-                     "voided_at": r["voided_at"], "void_reason": r["void_reason"],
                      "source": r["source"], "sort": (r["due_date"], 0, r["id"]),
-                     "unpaid": unpaid.get(r["id"]) if not r["voided_at"] and r["amount_cents"] > 0 else None})
-    for r in conn.execute("SELECT * FROM payments WHERE lease_id = ?", (lease_id,)):
+                     "unpaid": unpaid.get(r["id"]) if r["amount_cents"] > 0 else None})
+    for r in conn.execute("SELECT * FROM payments WHERE lease_id = ? AND voided_at IS NULL", (lease_id,)):
         desc = f"Payment — {method_name(r['method'], r['method_other'])}"
         if r["charge_id"] in names:
             desc += f", for {names[r['charge_id']]}"
         rows.append({"kind": "payment", "id": r["id"], "date": r["received_date"], "type": r["method"],
                      "description": desc, "period": None, "charge": 0, "credit": r["amount_cents"],
-                     "voided_at": r["voided_at"], "void_reason": r["void_reason"],
                      "receipt_number": r["receipt_number"], "notes": r["notes"], "unpaid": None,
                      "method_other": r["method_other"],
                      "sort": (r["received_date"], 1, r["id"])})
     rows.sort(key=lambda x: x["sort"])
     running = 0
     for row in rows:
-        if not row["voided_at"]:
-            running += row["charge"] - row["credit"]
+        running += row["charge"] - row["credit"]
         row["balance"] = running
     return rows
 

@@ -11,6 +11,7 @@ from ...services import tenants
 from ...services.common import csv_row
 from .. import attempt, db, today
 from ..forms import Form, values_from
+from . import safe_next
 
 bp = Blueprint("tenants", __name__)
 
@@ -53,7 +54,7 @@ def detail(tid: int):
 @bp.route("/tenants/<int:tid>/edit", methods=["GET", "POST"])
 def edit(tid: int):
     tenant = tenants.get_tenant(db(), tid)
-    back = request.values.get("back") or url_for("tenants.detail", tid=tid)
+    back = safe_next(request.values.get("back"), url_for("tenants.detail", tid=tid))
     if request.method == "POST":
         f = Form(request.form)
         with attempt("Saved") as r:
@@ -61,7 +62,7 @@ def edit(tid: int):
             f.check()
             tenants.save_tenant(db(), tid, fields)
         if r["done"]:
-            return redirect(back if back.startswith("/") and not back.startswith("//") else url_for("tenants.index"))
+            return redirect(back)
         values = request.form
     else:
         values = values_from(tenant)

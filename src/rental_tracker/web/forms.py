@@ -10,6 +10,12 @@ from ..domain.periods import parse_date
 from ..services.common import ServiceError
 
 
+def record_id(value: str | None) -> int | None:
+    """A database id typed or passed in a link; None unless it's a plain, sensible number."""
+    v = (value or "").strip()
+    return int(v) if v.isdigit() and len(v) <= 18 else None
+
+
 class Form:
     """Collects every problem in a form so the user sees them all at once."""
 
@@ -94,8 +100,7 @@ class Form:
         return int(self.raw(name) in ("1", "on", "yes", "true"))
 
     def id(self, name: str) -> int | None:
-        v = self.raw(name)
-        return int(v) if v.isdigit() else None
+        return record_id(self.raw(name))
 
     def check(self) -> None:
         if self.errors:

@@ -11,10 +11,11 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 
 from ...domain.money import cents_to_input, format_money
 from ...domain.periods import due_date, parse_date, period_of, period_start
+from ...domain.rent import rent_in_effect
 from ...services import deletion, leases, ledger, portfolio, rent_posting, tenants
 from ...services.common import get_int_setting, get_setting
 from .. import attempt, db, today
-from ..forms import Form
+from ..forms import Form, record_id
 from . import options
 from .tenants import person_fields
 
@@ -48,12 +49,19 @@ def _next_due(lease) -> date:
     return due if due > t else due_date(period_of(due + timedelta(days=31)), lease["rent_due_day"])
 
 
+def _rent_on(conn, lease, on: date) -> int:
+    """The rent billed for a given day, counting rent changes scheduled on the Edit page."""
+    changes = [(parse_date(r[0]), r[1]) for r in conn.execute(
+        "SELECT effective_date, rent_cents FROM lease_rent_changes WHERE lease_id = ?", (lease["id"],))]
+    return rent_in_effect(lease["rent_cents"], changes, on)
+
+
 @bp.route("/tenants/new", methods=["GET", "POST"])
 def new():
     """Add a tenant to a unit. Everything is optional."""
     conn = db()
-    unit_id = request.values.get("unit_id", type=int)
-    existing = request.values.get("tenant_id", type=int)
+    unit_id = record_id(request.values.get("unit_id"))
+    existing = record_id(request.values.get("tenant_id"))
     person = tenants.get_tenant(conn, existing) if existing else None
     t = today()
     if request.method == "POST":
@@ -105,7 +113,7 @@ def detail(lease_id: int):
     conn = db()
     lease = leases.get_lease(conn, lease_id)
     entries = ledger.ledger_entries(conn, lease_id)
-    payments = [e for e in entries if e["kind"] == "payment" and not e["voided_at"]]
+    payments = [e for e in entries if e["kind"] == "payment"]
     unpaid = ledger.unpaid_rent(conn, lease_id, today())
     this_month = period_start(period_of(today()))
     fill = None
@@ -115,8 +123,11 @@ def detail(lease_id: int):
     billed_from = lease["billing_start_date"]
     unbilled = billed_from if (billed_from and billed_from > _moved_in(lease)
                                and lease["status"] in ("active", "month_to_month")) else None
+    eff = _next_due(lease)
+    next_rent = _rent_on(conn, lease, eff)
+    rent_change = (next_rent, eff) if next_rent != lease["current_rent_cents"] else None
     return render_template(
-        "leases/detail.html", lease=lease, people=leases.lease_tenants(conn, lease_id),
+        "leases/detail.html", lease=lease, people=leases.lease_tenants(conn, lease_id), rent_change=rent_change,
         names=leases.tenant_names(conn, lease_id) or "Tenant",
         entries=list(reversed(entries)), summary=ledger.lease_summary(conn, lease_id, today()),
         last_payment=payments[-1] if payments else None,
@@ -260,15 +271,20 @@ def edit(lease_id: int):
                 tenants.save_tenant(conn, main[0]["id"], person)
             billed = conn.execute("SELECT COUNT(*) FROM charges WHERE lease_id = ? AND charge_type = 'rent'",
                                   (lease_id,)).fetchone()[0]
-            if rent is not None and rent != lease["current_rent_cents"]:
-                if billed:  # keep past bills as they were; the new rent starts with the next bill
-                    eff = _next_due(lease).isoformat()
-                    conn.execute("DELETE FROM lease_rent_changes WHERE lease_id = ? AND effective_date = ?",
-                                 (lease_id, eff))
-                    leases.add_rent_change(conn, lease_id, eff, rent)
-                    flash(f"The new rent starts with the bill due {eff}.", "info")
-                else:
-                    fields["rent_cents"] = rent
+            if rent is not None and billed:
+                # Past bills stay as they were. The rent typed here is the rent from the next bill on,
+                # so it replaces any change already scheduled from then (typing the current rent cancels it).
+                eff = _next_due(lease)
+                if rent != _rent_on(conn, lease, eff):
+                    conn.execute("DELETE FROM lease_rent_changes WHERE lease_id = ? AND effective_date >= ?",
+                                 (lease_id, eff.isoformat()))
+                    if rent != _rent_on(conn, lease, eff):
+                        leases.add_rent_change(conn, lease_id, eff.isoformat(), rent)
+                        flash(f"The new rent starts with the bill due {eff.isoformat()}.", "info")
+                    else:
+                        flash("The rent change was cancelled. The rent stays the same.", "info")
+            elif rent is not None and rent != lease["rent_cents"]:
+                fields["rent_cents"] = rent
             leases.update_terms(conn, lease_id, fields)
             if moved_in and (moved_in != _moved_in(lease) or f.bool("bill_from_move_in")):
                 leases.bill_from_move_in(conn, lease_id, moved_in, today())
@@ -280,7 +296,8 @@ def edit(lease_id: int):
             return _back(lease_id)
         values = request.form
     else:
-        values = {"rent": cents_to_input(lease["current_rent_cents"]), "rent_due_day": str(lease["rent_due_day"]),
+        values = {"rent": cents_to_input(_rent_on(conn, lease, _next_due(lease))),
+                  "rent_due_day": str(lease["rent_due_day"]),
                   "late_fee": cents_to_input(lease["late_fee_flat_cents"]) if lease["late_fee_type"] == "flat" else "",
                   "grace_days": str(lease["late_fee_grace_days"]), "notes": lease["notes"] or "",
                   "moved_in": _moved_in(lease)}
@@ -307,7 +324,7 @@ def _delete_entry(lease_id: int, table: str, entry_id: int, action, anchor: str)
 @bp.route("/leases/<int:lease_id>/delete-charge/<int:charge_id>", methods=["POST"])
 def delete_charge(lease_id: int, charge_id: int):
     return _delete_entry(lease_id, "charges", charge_id,
-                         lambda: deletion.delete_charge(db(), charge_id, today()), "history")
+                         lambda: deletion.delete_charge(db(), charge_id), "history")
 
 
 @bp.route("/leases/<int:lease_id>/delete-payment/<int:payment_id>", methods=["POST"])
@@ -326,7 +343,7 @@ def statement(lease_id: int):
         before = [e for e in entries if e["date"] < start]
         opening = before[-1]["balance"] if before else 0
         entries = [e for e in entries if e["date"] >= start]
-    return render_template("leases/statement.html", lease=lease, entries=[e for e in entries if not e["voided_at"]],
+    return render_template("leases/statement.html", lease=lease, entries=entries,
                            opening=opening, start=start, names=leases.tenant_names(conn, lease_id),
                            summary=ledger.lease_summary(conn, lease_id, today()),
                            business=get_setting(conn, "business_name", ""),

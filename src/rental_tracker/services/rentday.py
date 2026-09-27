@@ -7,8 +7,8 @@ from ..domain.periods import period_end, period_start
 from . import ledger
 
 
-def rows(conn: sqlite3.Connection, period: str, *, q: str = "", tag_id: int | None = None,
-         show: str = "all", lease_id: int | None = None) -> list[dict]:
+def rows(conn: sqlite3.Connection, period: str, *, q: str = "", show: str = "all",
+         lease_id: int | None = None) -> list[dict]:
     start, end = period_start(period).isoformat(), period_end(period).isoformat()
     where, params = ["l.status IN ('active','month_to_month')"], [period, start, end]
     if lease_id:
@@ -19,9 +19,6 @@ def rows(conn: sqlite3.Connection, period: str, *, q: str = "", tag_id: int | No
                      "SELECT 1 FROM lease_tenants lt JOIN tenants t ON t.id = lt.tenant_id "
                      "WHERE lt.lease_id = l.id AND t.first_name || ' ' || t.last_name LIKE ?))")
         params += [f"%{q}%"] * 4
-    if tag_id:
-        where.append("p.id IN (SELECT property_id FROM property_tags WHERE tag_id = ?)")
-        params.append(tag_id)
     out = []
     status = None
     for r in conn.execute(f"""

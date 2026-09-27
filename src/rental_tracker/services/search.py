@@ -20,9 +20,7 @@ def rebuild(conn: sqlite3.Connection) -> None:
         INSERT INTO search_index(entity_type, entity_id, title, body)
         SELECT 'property', p.id, p.name,
                """ + _join("p.address_line1", "p.address_line2", "p.city", "p.state", "p.postal_code",
-                         "p.parcel_number", "p.notes",
-                         "(SELECT group_concat(t.name, ' ') FROM property_tags pt "
-                         "JOIN tags t ON t.id = pt.tag_id WHERE pt.property_id = p.id)") + """
+                         "p.notes") + """
           FROM properties p""")
     conn.execute("""
         INSERT INTO search_index(entity_type, entity_id, title, body)

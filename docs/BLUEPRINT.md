@@ -689,11 +689,12 @@ At the owner's request the app was **simplified to the essentials**: add a unit,
 - **Everything in the payment history is editable in place:** click a date, a description, a payment method or an amount to change it (`ledger.edit_line`: a bill's due date, description and amount; a payment's date received, amount and method). The running balance is calculated from those, so it isn't edited directly; balances, lateness and late fees follow the changes.
 - **Fill in past rent:** when rent from past months is unpaid, the tenant page offers "Mark rent as paid" up to a chosen date (default today). It records one payment per unpaid rent bill, dated on its due date (`ledger.fill_rent_paid`), so those months count as paid on time and get no late fees. Other debts stay owed.
 - **Collect rent:** a keyboard-driven grid for entering everyone's payments.
+- **Rent changes:** the rent on the Edit page is the rent from the next bill on. Past bills stay as they were; the tenant page shows "₱X from <date>" while a change is scheduled, and typing the current rent back cancels it.
 - **Payment methods:** cash, check, bank transfer, GCash, or Other, where you type the method (e.g. "Maya"). Money is shown in Philippine pesos (₱). Migration 0003 rebuilds the payments table to allow these.
 - **Late:** who is behind, by how many days and how much; optional late fees that you charge or skip.
 - **Reports:** rent roll, who owes money, monthly collections. All printable and exportable to CSV.
 - **Settings:** your name for receipts, default late fee and grace days, when to bill rent, proration method.
-- **Delete:** on everything, straight away with no confirmation (at the owner's request). A backup is saved automatically before a unit, tenant or tenancy is deleted, and every deleted row is copied to the audit log.
+- **Delete:** on everything, straight away with no confirmation (at the owner's request). A backup is saved automatically before a unit, tenant or tenancy is deleted, and every deleted row is copied to the audit log. Deleting an automatic line (a month's rent, a late fee) keeps a hidden "deleted" row so it isn't billed or suggested again; lines you added yourself are removed outright.
 
 **Kept in the background, without screens**
 

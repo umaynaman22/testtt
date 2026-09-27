@@ -17,7 +17,6 @@ from flask import Flask, abort, current_app, flash, g, render_template, request,
 from .. import __version__
 from .. import db as dbmod
 from ..config import DataDir
-from ..domain.money import format_money
 from ..services import backup, startup
 from ..services.common import ServiceError
 
@@ -165,10 +164,15 @@ def create_app(data: DataDir, *, launch_token: str | None = None,
         err = NotFound(str(e)) if "not found" in str(e).lower() else BadRequest(str(e))
         return render_template("error.html", error=err), err.code
 
+    @app.errorhandler(OverflowError)
+    def number_too_large(_e):
+        # e.g. a link or form with a 20-digit number: too big for the database, so nothing can match it
+        from werkzeug.exceptions import BadRequest
+        return render_template("error.html", error=BadRequest("That number is too large.")), 400
+
     @app.errorhandler(500)
     def server_error(e):
         log.exception("unhandled error")
         return render_template("error.html", error=e), 500
 
-    app.jinja_env.globals["format_money"] = format_money
     return app

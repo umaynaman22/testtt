@@ -28,8 +28,7 @@ def auth():
     if token and hmac.compare_digest(request.args.get("token", ""), token):
         session.clear()
         session["auth"] = True
-        session["in_window"] = request.args.get("window") == "1"
-        log.info("opened in the %s", "app window" if session["in_window"] else "browser")
+        log.info("opened in the %s", "app window" if request.args.get("window") == "1" else "browser")
         return redirect(url_for("main.dashboard"))
     return render_template("locked.html"), 403
 

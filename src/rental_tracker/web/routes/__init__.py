@@ -11,7 +11,7 @@ def options(values, labels: dict | None = None) -> list[tuple[str, str]]:
 
 def safe_next(target: str | None, fallback: str) -> str:
     """Only allow redirects back into this app."""
-    if target and target.startswith("/") and not target.startswith("//"):
+    if target and target.startswith("/") and not target.startswith(("//", "/\\")):
         return target
     return fallback
 

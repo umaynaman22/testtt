@@ -4,7 +4,7 @@
 {% block content %}
 {% set s = summary %}
 {% call m.page_head(names, place(lease.property_code, lease.unit_label),
-      crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a> / <a href="' ~ url_for('properties.detail', pid=lease.property_id) ~ '">' ~ lease.property_code ~ '</a>') %}
+      crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a> / <a href="' ~ url_for('properties.detail', pid=lease.property_id) ~ '">' ~ (lease.property_code|e) ~ '</a>') %}
   <a class="btn" href="{{ url_for('leases.edit', lease_id=lease.id) }}">Edit</a>
   <a class="btn" href="{{ url_for('leases.statement', lease_id=lease.id) }}">Print statement</a>
   {{ m.delete_link('lease', lease.id) }}
@@ -17,7 +17,7 @@
     <div class="value {{ 'neg' if s.balance > 0 else ('pos' if s.balance < 0) }}">{{ s.balance|money }}</div>
     <div class="sub">{% if s.balance < 0 %}paid ahead (credit){% elif s.aging.past_due %}<strong class="neg">{{ s.aging.past_due|money }} late</strong> since {{ s.oldest_unpaid_due|fdate }}{% elif s.balance > 0 %}not late yet{% else %}paid up{% endif %}</div></div>
   <div class="kpi"><div class="label">Rent</div><div class="value">{{ lease.current_rent_cents|money }}</div>
-    <div class="sub">due on day {{ lease.rent_due_day }}{% if lease.late_fee_type == 'flat' %} · {{ lease.late_fee_flat_cents|money }} late fee after {{ lease.late_fee_grace_days }} days{% endif %}</div></div>
+    <div class="sub">{% if rent_change %}{{ rent_change[0]|money }} from {{ rent_change[1]|fdate }} · {% endif %}due on day {{ lease.rent_due_day }}{% if lease.late_fee_type == 'flat' %} · {{ lease.late_fee_flat_cents|money }} late fee after {{ lease.late_fee_grace_days }} days{% endif %}</div></div>
   <div class="kpi"><div class="label">Last payment</div>
     {% if last_payment %}<div class="value">{{ last_payment.credit|money }}</div><div class="sub">{{ last_payment.date|fdate }}</div>
     {% else %}<div class="value muted">—</div><div class="sub">none yet</div>{% endif %}</div>
@@ -74,7 +74,7 @@
         <tbody>
         {% for e in entries %}
           {% set line_url = url_for('leases.edit_line', lease_id=lease.id, kind=e.kind, entry_id=e.id) %}
-          <tr class="{{ 'voided' if e.voided_at }}">
+          <tr>
             <td class="nowrap">{% call m.edit_cell(line_url, e.date|fdate) %}<input type="date" name="date" value="{{ e.date }}" aria-label="Date">{% endcall %}</td>
             <td>
               {%- if e.kind == 'payment' %}
@@ -83,8 +83,7 @@
                   <input class="method-other" name="method_other" value="{{ e.method_other or '' }}" maxlength="60" placeholder="Type how they paid" aria-label="Other method">{% endcall %}
               {%- else %}
                 {% call m.edit_cell(line_url, e.description) %}<input name="description" value="{{ e.description }}" maxlength="120" aria-label="What it's for">{% endcall %}
-              {%- endif %}
-              {%- if e.voided_at %} <span class="small keep">(voided: {{ e.void_reason }})</span>{% endif %}</td>
+              {%- endif %}</td>
             <td class="num">{% if e.charge %}{% call m.edit_cell(line_url, e.charge|money, right=True) %}<input name="amount" inputmode="decimal" autocomplete="off" value="{{ e.charge|input_money }}" aria-label="Amount charged">{% endcall %}{% endif %}</td>
             <td class="num {{ 'pos' if e.kind == 'payment' }}">
               {%- if e.kind == 'payment' %}{% call m.edit_cell(line_url, e.credit|money, right=True) %}<input name="amount" inputmode="decimal" autocomplete="off" value="{{ e.credit|input_money }}" aria-label="Amount paid">{% endcall %}

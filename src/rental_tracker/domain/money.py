@@ -6,6 +6,7 @@ import re
 _AMOUNT_RE = re.compile(r"(\d+)(?:\.(\d{0,2}))?|\.(\d{1,2})")
 _CURRENCY_RE = re.compile(r"₱|php|\$", re.IGNORECASE)
 SYMBOL = "₱"
+MAX_CENTS = 10 ** 12  # ₱10,000,000,000.00: far above any real amount, far below what SQLite can store
 
 
 def parse_money(text: str | None) -> int:
@@ -28,6 +29,8 @@ def parse_money(text: str | None) -> int:
     else:
         dollars, frac = m.group(1), m.group(2) or ""
     cents = int(dollars) * 100 + int((frac + "00")[:2])
+    if cents > MAX_CENTS:
+        raise ValueError(f"amount is too large: {text!r}")
     return -cents if negative else cents
 
 

@@ -2,7 +2,7 @@
 {% import "_macros.html" as m with context %}
 {% block title %}Edit tenant{% endblock %}
 {% block content %}
-{{ m.page_head("Edit " ~ ((tenant.first_name ~ " " ~ tenant.last_name)|trim), crumbs='<a href="' ~ back ~ '">Back</a>') }}
+{{ m.page_head("Edit " ~ ((tenant.first_name ~ " " ~ tenant.last_name)|trim), crumbs='<a href="' ~ (back|e) ~ '">Back</a>') }}
 <form method="post" class="card" style="max-width:640px">
   {{ m.csrf() }}<input type="hidden" name="back" value="{{ back }}">
   <div class="form-grid">

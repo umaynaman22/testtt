@@ -13,7 +13,8 @@ def test_parse_money(text, cents):
     assert parse_money(text) == cents
 
 
-@pytest.mark.parametrize("bad", ["", "  ", "abc", "1.234", "1e5", "12..0", "--1", None])
+@pytest.mark.parametrize("bad", ["", "  ", "abc", "1.234", "1e5", "12..0", "--1", None, "99999999999999999999",
+                                 "10000000000.01"])
 def test_parse_money_rejects(bad):
     with pytest.raises(ValueError):
         parse_money(bad)

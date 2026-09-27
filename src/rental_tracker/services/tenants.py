@@ -20,8 +20,9 @@ def save_tenant(conn: sqlite3.Connection, tid: int | None, fields: dict[str, Any
     for key in ("first_name", "last_name"):
         if key in fields or tid is None:
             fields[key] = (fields.get(key) or "").strip()
-    if tid is None and not fields["first_name"] and not fields["last_name"]:
-        fields["first_name"], fields["last_name"] = "Unnamed", "tenant"  # names are optional
+    naming = tid is None or ("first_name" in fields and "last_name" in fields)
+    if naming and not fields["first_name"] and not fields["last_name"]:
+        fields["first_name"], fields["last_name"] = "Unnamed", "tenant"  # names are optional, never blank
     if fields.get("external_ref"):
         dup = conn.execute("SELECT id FROM tenants WHERE external_ref = ? AND id IS NOT ?",
                            (fields["external_ref"], tid)).fetchone()

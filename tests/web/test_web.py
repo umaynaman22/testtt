@@ -319,6 +319,46 @@ def test_every_box_in_payment_history_can_be_changed(app, client):
     assert "rent" in client.get(f"/leases/{lid}").get_data(as_text=True).lower()
 
 
+def test_review_fixes(app, client):
+    """Bugs found in the code review stay fixed."""
+    token = csrf(client)
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' LIMIT 1")[0]
+    big = "99999999999999999999"
+    # numbers too big for the database: a message or an error page, never a crash
+    r = client.post(f"/leases/{lid}/payment", data={"csrf_token": token, "amount": big}, follow_redirects=True)
+    assert r.status_code == 200 and "enter an amount like" in r.get_data(as_text=True)
+    for url in (f"/leases/{big}", f"/tenants/new?unit_id={big}&tenant_id={big}", f"/payments?property={big}"):
+        assert client.get(url).status_code < 500, url
+    # a unit's name and the "back" link are shown as text, not HTML
+    pid = client.post("/properties/new", data={"csrf_token": token, "name": "Tom <b>Bold</b>"}).headers["Location"].split("/")[-1]
+    unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
+    new = client.post("/tenants/new", data={"csrf_token": token, "unit_id": unit, "name": "X Y"}).headers["Location"]
+    assert "<b>Bold</b>" not in client.get(new).get_data(as_text=True)
+    tid = q(app, "SELECT id FROM tenants LIMIT 1")[0]
+    page = client.get(f'/tenants/{tid}/edit?back="><i>x</i>').get_data(as_text=True)
+    assert "<i>x</i>" not in page
+    assert 'href="//evil.example"' not in client.get(f"/tenants/{tid}/edit?back=//evil.example").get_data(as_text=True)
+    # clearing a name gives "Unnamed tenant" rather than a blank
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "name": " "})
+    assert "Unnamed tenant" in client.get(f"/leases/{lid}").get_data(as_text=True)
+
+
+def test_scheduled_rent_change_can_be_changed_or_cancelled(app, client):
+    token = csrf(client)
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' AND rent_due_day = 1 LIMIT 1")[0]
+    rent = q(app, f"SELECT current_rent_cents FROM v_lease_current_rent WHERE lease_id = {lid}")[0]
+    changes = lambda: q(app, f"SELECT rent_cents FROM lease_rent_changes WHERE lease_id = {lid}")
+    edit = f"/leases/{lid}/edit"
+    client.post(edit, data={"csrf_token": token, "rent": str(rent // 100 + 1000)})
+    assert changes() == [rent + 100000]
+    assert f'value="{(rent + 100000) // 100}.00"' in client.get(edit).get_data(as_text=True)  # the next bill's rent
+    assert "from Oct 1, 2026" in client.get(f"/leases/{lid}").get_data(as_text=True)
+    client.post(edit, data={"csrf_token": token, "rent": str(rent // 100 + 1000)})  # saving as is changes nothing
+    assert changes() == [rent + 100000]
+    r = client.post(edit, data={"csrf_token": token, "rent": str(rent // 100)}, follow_redirects=True)
+    assert changes() == [] and "cancelled" in r.get_data(as_text=True)
+
+
 def test_tenant_without_property_can_be_linked_later(app, client):
     token = csrf(client)
     r = client.post("/tenants/new", data={"csrf_token": token, "name": "Sam Lee"})

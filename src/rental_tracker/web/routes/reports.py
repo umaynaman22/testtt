@@ -6,6 +6,7 @@ from flask import Blueprint, Response, abort, render_template, request
 from ...domain.periods import parse_period, period_of
 from ...services import portfolio, reports
 from .. import db, today
+from ..forms import record_id
 
 bp = Blueprint("reports", __name__)
 
@@ -21,7 +22,7 @@ def view(key: str):
         abort(404)
     conn = db()
     t = today()
-    pid = request.args.get("property", type=int)
+    pid = record_id(request.args.get("property"))
     pids = [pid] if pid else None
     period = request.args.get("period") or period_of(t)
     try:

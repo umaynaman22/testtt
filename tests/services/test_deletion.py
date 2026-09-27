@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from rental_tracker.services import deletion, leases, ledger, rent_posting, tenants
+from rental_tracker.services import deletion, late_fees, ledger, rent_posting, startup, tenants
 from rental_tracker.services.common import LockedPeriodError, ServiceError, set_setting
 from tests.conftest import make_lease, make_property
 
@@ -31,15 +31,28 @@ def test_delete_payment_and_linked_deposit(conn, owner_id):
     assert count(conn, "deposit_transactions") == 0
 
 
-def test_delete_auto_rent_rebills_at_current_rent(conn, owner_id):
-    lid = make_lease(conn, owner_id, rent=100000)
+def test_deleted_lines_stay_deleted(conn, owner_id):
+    lid = make_lease(conn, owner_id, rent=100000, late_fee_type="flat", late_fee_flat_cents=5000)
     rent_posting.post_rent(conn, TODAY)
-    leases.add_rent_change(conn, lid, "2026-03-01", 110000)
-    march = conn.execute("SELECT id FROM charges WHERE period = '2026-03'").fetchone()[0]
-    assert "billed again" in deletion.delete_charge(conn, march, TODAY)
-    assert conn.execute("SELECT amount_cents FROM charges WHERE period = '2026-03'").fetchone()[0] == 110000
+    march = conn.execute("SELECT id FROM charges WHERE period = '2026-03' AND charge_type = 'rent'").fetchone()[0]
+    ledger.pay_line(conn, lid, march, 20000, TODAY)  # a payment made toward March
+    before = ledger.lease_balance(conn, lid)
+    assert deletion.delete_charge(conn, march) == "Deleted."
+    rent_posting.post_rent(conn, TODAY)  # the latest month is not billed again...
+    startup.run_catch_up(conn, TODAY)    # ...not even when the app starts
+    assert count(conn, "charges", "period = '2026-03' AND charge_type = 'rent' AND voided_at IS NULL") == 0
+    assert ledger.lease_balance(conn, lid) == before - 100000
+    assert all(e["id"] != march for e in ledger.ledger_entries(conn, lid) if e["kind"] == "charge")
+    assert ledger.lease_summary(conn, lid, TODAY)["balance"] == before - 100000  # the payment still counts
+    # a late fee you delete isn't suggested again
+    late_fees.apply(conn, [c.key for c in late_fees.find_candidates(conn, TODAY)][:1], "approve", TODAY)
+    fee = conn.execute("SELECT id, period FROM charges WHERE charge_type = 'late_fee' AND voided_at IS NULL").fetchone()
+    deletion.delete_charge(conn, fee["id"])
+    assert fee["period"] not in {c.period for c in late_fees.find_candidates(conn, TODAY)}
+    # a debt you added yourself is simply removed
     debt = ledger.add_charge(conn, lid, "other", 500, None, "Debt")
-    assert deletion.delete_charge(conn, debt, TODAY) == "Charge deleted."
+    deletion.delete_charge(conn, debt)
+    assert count(conn, "charges", "id = ?", (debt,)) == 0 and audited(conn, "charge") == 3
 
 
 def test_books_lock_blocks_deletes(conn, owner_id):

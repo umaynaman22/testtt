@@ -12,11 +12,9 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date
-
 from ..domain.periods import parse_date
-from . import rent_posting, search
-from .common import ServiceError, audit, books_locked_through, ensure_open, row_or_error
+from . import search
+from .common import ServiceError, audit, books_locked_through, ensure_open, now_utc, row_or_error
 
 
 def _q(ids: list[int]) -> str:
@@ -29,23 +27,21 @@ def _ids(conn, sql: str, params) -> list[int]:
 
 # ---- single entries ------------------------------------------------------------
 
-def delete_charge(conn: sqlite3.Connection, charge_id: int, today: date) -> str:
-    """Delete a charge or credit. A deleted automatic charge is billed again at the current terms."""
+def delete_charge(conn: sqlite3.Connection, charge_id: int) -> str:
+    """Delete a line (a bill or debt) from a tenant's history.
+
+    Automatic lines (monthly rent, late fees) are kept as a hidden "deleted" row instead of being
+    erased, so the app doesn't bill or suggest them again. They no longer show or count anywhere.
+    """
     c = row_or_error(conn, "SELECT * FROM charges WHERE id = ?", (charge_id,), "Charge")
     ensure_open(conn, c["due_date"])
-    conn.execute("DELETE FROM charges WHERE id = ?", (charge_id,))
-    audit(conn, "delete", "charge", charge_id, dict(c))
-    what = "Credit" if c["amount_cents"] < 0 else "Charge"
-    if c["source"] == "auto" and c["charge_type"] == "late_fee":
-        return f"{what} deleted. It will be suggested again under Late fees; waive it there to stop that."
     if c["source"] == "auto":
-        lease = conn.execute("SELECT status FROM leases WHERE id = ?", (c["lease_id"],)).fetchone()
-        if lease and lease["status"] in ("active", "month_to_month"):
-            reposted = rent_posting.post_rent(conn, today, [c["lease_id"]])
-            if reposted.posted:
-                return (f"{what} deleted and billed again with the lease's current terms. "
-                        "To cancel a month for good, void it instead of deleting.")
-    return f"{what} deleted."
+        if not c["voided_at"]:
+            conn.execute("UPDATE charges SET voided_at = ?, void_reason = 'Deleted' WHERE id = ?", (now_utc(), charge_id))
+    else:
+        conn.execute("DELETE FROM charges WHERE id = ?", (charge_id,))
+    audit(conn, "delete", "charge", charge_id, dict(c))
+    return "Deleted."
 
 
 def delete_payment(conn: sqlite3.Connection, payment_id: int) -> str:
