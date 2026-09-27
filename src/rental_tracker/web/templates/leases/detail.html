@@ -9,12 +9,12 @@
   <a class="btn" href="{{ url_for('leases.statement', lease_id=lease.id) }}">Tenant statement</a>
   <a class="btn" href="{{ url_for('leases.edit', lease_id=lease.id) }}">Edit terms</a>
   {% if current %}<a class="btn primary" href="#pay">Record payment</a>{% endif %}
+  {{ m.delete_link('lease', lease.id, 'Delete lease') }}
 {% endcall %}
 
 {% if lease.status == 'draft' %}
 <div class="flash info">This lease is a draft — nothing is billed until you mark it signed.
   <form method="post" action="{{ url_for('leases.sign', lease_id=lease.id) }}" style="display:inline">{{ m.csrf() }}<button class="btn small primary">Mark signed</button></form>
-  <form method="post" action="{{ url_for('leases.delete_draft', lease_id=lease.id) }}" style="display:inline" data-confirm="Delete this draft lease?">{{ m.csrf() }}<button class="btn small danger">Delete draft</button></form>
 </div>
 {% elif lease.status == 'future' %}<div class="flash info">This lease starts {{ lease.start_date|fdate }}. It becomes active automatically on that day.</div>{% endif %}
 {% if renewal %}<div class="flash info">Renewed: <a href="{{ url_for('leases.detail', lease_id=renewal.id) }}">next term starting {{ renewal.start_date|fdate }}</a> ({{ renewal.status|label }}).</div>{% endif %}
@@ -53,6 +53,16 @@
               {% if not e.voided_at %}
                 {% if e.kind == 'payment' and e.type != 'deposit_applied' %}{{ m.void_form(url_for('leases.void_payment', lease_id=lease.id, payment_id=e.id), 'payment', nsf=(e.type == 'check')) }}
                 {% elif e.kind == 'charge' %}{{ m.void_form(url_for('leases.void_charge', lease_id=lease.id, charge_id=e.id), 'charge') }}{% endif %}
+              {% endif %}
+              {% if e.kind == 'payment' %}
+                {{ m.delete_button(url_for('leases.delete_payment', lease_id=lease.id, payment_id=e.id),
+                   "Delete this payment? It disappears from the ledger. Use Void instead to keep a crossed-out record.") }}
+              {% elif e.source == 'auto' and e.type != 'late_fee' %}
+                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id),
+                   "Delete this charge? Automatic rent and add-ons are billed again with the current terms (handy after fixing the rent). To cancel a month for good, use Void.") }}
+              {% else %}
+                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id),
+                   "Delete this " ~ ("credit" if e.credit else "charge") ~ "? It disappears from the ledger. Use Void instead to keep a crossed-out record.") }}
               {% endif %}
             </div></td>
           </tr>
@@ -107,7 +117,8 @@
           <td class="nowrap">{{ d.txn_date|fdate }}</td><td>{{ d.txn_type|label }}{% if d.description %} — {{ d.description }}{% endif %}
             {% if d.voided_at %}<div class="small keep">Voided: {{ d.void_reason }}</div>{% endif %}</td>
           <td class="num">{{ ('' if d.txn_type in ['received', 'interest'] else '−') ~ (d.amount_cents|money) }}</td>
-          <td class="actions keep">{% if not d.voided_at %}{{ m.void_form(url_for('leases.void_deposit', lease_id=lease.id, txn_id=d.id), 'entry') }}{% endif %}</td></tr>{% endfor %}
+          <td class="actions keep"><div class="row-actions">{% if not d.voided_at %}{{ m.void_form(url_for('leases.void_deposit', lease_id=lease.id, txn_id=d.id), 'entry') }}{% endif %}
+            {{ m.delete_button(url_for('leases.delete_deposit', lease_id=lease.id, txn_id=d.id), "Delete this deposit entry?") }}</div></td></tr>{% endfor %}
       </tbody></table></div>{% endif %}
       {% if lease.status in ['ended', 'terminated'] and s.deposit_held > 0 %}
         <p class="note">Moved out {{ lease.move_out_date|fdate }}. Settle the deposit within {{ deposit_days }} days: record deductions (itemized), apply any to unpaid rent, then refund the rest.</p>
@@ -131,7 +142,7 @@
       <ul style="padding-left:18px;margin:0">
         {% for t in tenants %}<li><a href="{{ url_for('tenants.detail', tid=t.id) }}">{{ t.first_name }} {{ t.last_name }}</a>
           <span class="muted small">· {{ t.role|label }}{% if t.phone %} · {{ t.phone }}{% endif %}</span>
-          {% if tenants|length > 1 %}<form method="post" action="{{ url_for('leases.remove_tenant', lease_id=lease.id, tid=t.id) }}" style="display:inline" data-confirm="Remove {{ t.first_name }} from this lease?">{{ m.csrf() }}<button class="btn link small">remove</button></form>{% endif %}</li>{% endfor %}
+          {% if tenants|length > 1 %}<form method="post" action="{{ url_for('leases.remove_tenant', lease_id=lease.id, tid=t.id) }}" style="display:inline" data-confirm="Remove {{ t.first_name }} from this lease?">{{ m.csrf() }}<button class="btn link small">remove from lease</button></form>{% endif %}</li>{% endfor %}
       </ul>
       <details class="section"><summary>Add a person</summary>
         <datalist id="tenant-list">{% for t in tenant_opts %}<option value="{{ t }}">{% endfor %}</datalist>
@@ -198,7 +209,8 @@
         {% if lease.notes %}<dt>Notes</dt><dd style="white-space:pre-wrap">{{ lease.notes }}</dd>{% endif %}
       </dl>
       <h3>Rent changes</h3>
-      {% if changes %}<ul class="small" style="padding-left:18px">{% for c in changes %}<li>{{ c.effective_date|fdate }}: {{ c.rent_cents|money }}{% if c.notice_sent_date %} <span class="muted">(notice sent {{ c.notice_sent_date|fdate }})</span>{% endif %}{% if c.reason %} — {{ c.reason }}{% endif %}</li>{% endfor %}</ul>{% else %}<p class="small muted">None.</p>{% endif %}
+      {% if changes %}<ul class="small" style="padding-left:18px">{% for c in changes %}<li>{{ c.effective_date|fdate }}: {{ c.rent_cents|money }}{% if c.notice_sent_date %} <span class="muted">(notice sent {{ c.notice_sent_date|fdate }})</span>{% endif %}{% if c.reason %} — {{ c.reason }}{% endif %}
+        {{ m.delete_button(url_for('leases.delete_rent_change', lease_id=lease.id, change_id=c.id), "Delete this rent change? Rent already billed is not changed.", label="delete", cls="btn link small") }}</li>{% endfor %}</ul>{% else %}<p class="small muted">None.</p>{% endif %}
       <details class="section"><summary>Add rent change</summary>
         <form method="post" action="{{ url_for('leases.rent_change', lease_id=lease.id) }}">
           {{ m.csrf() }}
@@ -213,7 +225,8 @@
       </details>
       <h3>Recurring add-ons</h3>
       {% if recurring %}<ul class="small" style="padding-left:18px">{% for r in recurring %}<li>{{ r.description }}: {{ r.amount_cents|money }}/mo from {{ r.start_date|fdate }}{% if r.end_date %} to {{ r.end_date|fdate }}{% else %}
-          <form method="post" action="{{ url_for('leases.end_recurring', lease_id=lease.id, rc_id=r.id) }}" style="display:inline-flex;gap:4px">{{ m.csrf() }}<input type="date" name="end_date" required aria-label="End date"><button class="btn small">End</button></form>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="small muted">None.</p>{% endif %}
+          <form method="post" action="{{ url_for('leases.end_recurring', lease_id=lease.id, rc_id=r.id) }}" style="display:inline-flex;gap:4px">{{ m.csrf() }}<input type="date" name="end_date" required aria-label="End date"><button class="btn small">End</button></form>{% endif %}
+          {{ m.delete_button(url_for('leases.delete_recurring', lease_id=lease.id, rc_id=r.id), "Delete this add-on? Months already billed stay on the ledger; use End instead to stop it from a date.", label="delete", cls="btn link small") }}</li>{% endfor %}</ul>{% else %}<p class="small muted">None.</p>{% endif %}
       <details class="section"><summary>Add recurring charge</summary>
         <form method="post" action="{{ url_for('leases.recurring', lease_id=lease.id) }}">
           {{ m.csrf() }}

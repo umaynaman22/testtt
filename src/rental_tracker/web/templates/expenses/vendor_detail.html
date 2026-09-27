@@ -4,6 +4,7 @@
 {% block content %}
 {% call m.page_head(v.name, v.trade, crumbs='<a href="' ~ url_for('expenses.vendors') ~ '">Vendors</a>') %}
   <a class="btn" href="{{ url_for('expenses.vendor_edit', vendor_id=v.id) }}">Edit</a>
+  {{ m.delete_link('vendor', v.id) }}
 {% endcall %}
 <div class="split">
   <div class="card"><h2>Expenses</h2>

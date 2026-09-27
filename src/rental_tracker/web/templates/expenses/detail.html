@@ -4,6 +4,7 @@
 {% block content %}
 {% call m.page_head(e.category_name ~ " — " ~ (e.amount_cents|money), e.expense_date|fdate, crumbs='<a href="' ~ url_for('expenses.index') ~ '">Expenses</a>') %}
   {% if not e.voided_at %}{{ m.void_form(url_for('expenses.void', expense_id=e.id), 'expense') }}{% endif %}
+  {{ m.delete_button(url_for('expenses.delete', expense_id=e.id), "Delete this expense and its attached receipts? Use Void instead to keep a crossed-out record.", cls="btn danger") }}
 {% endcall %}
 {% if e.voided_at %}<div class="flash error">Voided: {{ e.void_reason }}</div>{% endif %}
 <div class="split">

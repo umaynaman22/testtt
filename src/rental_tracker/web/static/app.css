@@ -132,6 +132,7 @@ tr.heading td { background: var(--surface-2); font-weight: 650; }
 tr.voided td { color: var(--text-muted); text-decoration: line-through; }
 tr.voided td.keep { text-decoration: none; }
 td.actions { white-space: nowrap; text-align: right; }
+.inline-form { display: inline; margin: 0; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 table.compact td { padding: 6px 4px; }
 .empty { padding: 28px; text-align: center; color: var(--text-muted); }

@@ -22,9 +22,6 @@ def test_newer_database_refused(conn):
 
 def test_constraints(conn, owner_id):
     lid = make_lease(conn, owner_id)
-    pid = ledger.record_payment(conn, lid, 5000, "2026-01-02", "cash")
-    with pytest.raises(sqlite3.IntegrityError, match="void them instead"):
-        conn.execute("DELETE FROM payments WHERE id = ?", (pid,))
     unit = conn.execute("SELECT unit_id FROM leases WHERE id = ?", (lid,)).fetchone()[0]
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO leases(unit_id, status, start_date, rent_cents) VALUES (?, 'active', '2026-02-01', 1)",
@@ -62,3 +59,15 @@ def test_scheduled_backups_and_rotation(conn, data_dir, tmp_path):
     daily = [b for b in backup.list_backups(data_dir) if b.kind == "daily"]
     assert len(daily) <= 14
     assert list((ext / "RentalTrackerBackups" / "db").glob("*.db"))
+
+
+def test_upgrade_from_version_1_allows_deletes(data_dir):
+    conn = dbmod.connect(data_dir.db)
+    first = dbmod.migrations()[0][1].read_text(encoding="utf-8")
+    conn.executescript(f"BEGIN;\n{first}\nPRAGMA user_version = 1;\nCOMMIT;")
+    conn.execute("INSERT INTO owners(name) VALUES ('x')")
+    backed_up = []
+    assert dbmod.migrate(conn, before=lambda: backed_up.append(True)) == dbmod.latest_version() - 1
+    assert backed_up == [True]  # existing data is backed up before upgrading
+    assert not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%no_delete'").fetchall()
+    conn.close()

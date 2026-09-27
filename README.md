@@ -7,7 +7,7 @@ It covers properties, units, tenants and leases, and bills rent automatically wi
 | Document | What's in it |
 |---|---|
 | [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) | The design: architecture, money rules, features, screens, reports, backups, security, roadmap, and [build status](docs/BLUEPRINT.md#18-build-status) |
-| [`src/rental_tracker/db/migrations/0001_initial.sql`](src/rental_tracker/db/migrations/0001_initial.sql) | The database: 33 tables, constraints, guard-rail triggers, rent-roll and occupancy views, and seed categories and settings |
+| [`src/rental_tracker/db/migrations/0001_initial.sql`](src/rental_tracker/db/migrations/0001_initial.sql) | The database: 33 tables, constraints, rent-roll and occupancy views, and seed categories and settings (later changes are in the numbered files next to it) |
 
 ## Windows app (.exe)
 
@@ -83,7 +83,7 @@ To move to a new computer, copy the folder and start the app with `--data-dir` p
 
 ```bash
 pip install -e ".[dev]"
-pytest                      # 81 tests: money rules, services, every page, security checks
+pytest                      # 93 tests: money rules, services, every page, security checks
 ```
 
 The code layout is described in [BLUEPRINT §13](docs/BLUEPRINT.md#13-code-structure). The business rules live in `src/rental_tracker/domain/` as pure functions.

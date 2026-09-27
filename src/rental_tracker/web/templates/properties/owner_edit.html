@@ -2,7 +2,9 @@
 {% import "_macros.html" as m with context %}
 {% block title %}{{ owner.name }}{% endblock %}
 {% block content %}
-{{ m.page_head(owner.name, crumbs='<a href="' ~ url_for('properties.owners') ~ '">Owners</a>') }}
+{% call m.page_head(owner.name, crumbs='<a href="' ~ url_for('properties.owners') ~ '">Owners</a>') %}
+  {{ m.delete_link('owner', owner.id) }}
+{% endcall %}
 <div class="split">
   <div class="card"><h2>Properties <span class="side muted">{{ props|length }}</span></h2>
     {% if props %}<ul>{% for p in props %}<li><a href="{{ url_for('properties.detail', pid=p.id) }}">{{ p.code }}</a> — {{ p.name }} {% if p.status != 'active' %}{{ p.status|badge }}{% endif %}</li>{% endfor %}</ul>

@@ -38,7 +38,7 @@ The database design lives in [`0001_initial.sql`](../src/rental_tracker/db/migra
 - **Works 100% offline.** No CDN scripts, web fonts, telemetry or license checks. It still works if the internet is disconnected forever.
 - **One source of truth** for properties, units, tenants, leases, rent, deposits, expenses, maintenance and documents.
 - **Scales to a real portfolio.** 50+ properties and hundreds of units, with batch entry so the first of the month takes minutes, not hours.
-- **Correct money.** Every balance can be traced to individual charges and payments. Nothing is silently deleted, and there is a full audit trail.
+- **Correct money.** Every balance can be traced to individual charges and payments. Every change and delete is recorded in a full audit trail.
 - **Your data stays yours.** It lives in a single file you can back up, copy and export to CSV or Excel at any time.
 - **Tax-ready.** Expenses map to tax lines (US Schedule E by default, configurable elsewhere).
 
@@ -61,7 +61,7 @@ The database design lives in [`0001_initial.sql`](../src/rental_tracker/db/migra
 | UI | Server-rendered HTML + HTMX | Fast and simple; no JavaScript build pipeline |
 | Money | Integer cents | No floating-point rounding errors |
 | Balances | Always computed from the ledger | They can never drift out of sync |
-| Deletes | Financial rows are voided, never deleted | Audit trail; enforced by database triggers |
+| Deletes | Everything can be deleted; money entries can also be voided | Deletes are confirmed, audited, and blocked in locked periods; big deletes take a backup first |
 | Scheduled jobs | "Catch-up" when the app opens | No always-on server needed offline |
 | Backups | Automatic, rotating, plus an external drive | Protects against a laptop being lost or failing |
 
@@ -292,12 +292,20 @@ The same calculation produces:
 
 Because this allocation is computed rather than stored, correcting an old payment updates everything consistently. Late fees that were already posted stay as they are.
 
-### 7.6 Voids, bounced checks and locked periods
+### 7.6 Voids, deletes, bounced checks and locked periods
 
-- Charges, payments, expenses and deposit transactions **cannot be deleted**. Database triggers enforce this. You void them instead, and a void reason is required.
+- **Void or delete.** Charges, credits, payments, expenses and deposit entries can be **voided**, which keeps a crossed-out line with a required reason, or **deleted**, which removes them. Either way, a full copy of the entry goes into the audit log.
+- **Deleting an automatic charge** (rent or an add-on) bills it again with the lease's current terms. This is a quick way to fix a month after correcting the rent. To cancel a month for good, void it instead. A deleted late fee reappears in the review queue.
+- **Deleting a record with history** (owner, property, unit, lease, tenant, vendor, category) opens a page listing exactly what goes with it: for example units, leases, payments and expenses. Deletes that remove money entries need the word DELETE typed to confirm. A safety backup is taken just before, and the page suggests safer alternatives where they exist (mark a property Sold, set a unit Offline, untick a vendor's Active box).
+- **Rules that keep the books consistent:**
+  - A tenant who is the only person on a lease can't be deleted until the lease is.
+  - Deleting a category moves its expenses to a category you choose.
+  - Deleting a vendor keeps their expenses.
+  - Deleting a unit keeps its expenses on the property.
+  - Document files stay in the documents folder, so restoring a backup still works.
 - **Bounced check (NSF):** void the payment with the reason "NSF", and optionally post an `nsf_fee` charge. This takes one click in the UI.
-- **Books lock:** Settings → `books_locked_through` (for example, after filing taxes). Entries dated on or before that date become read-only. To correct them, post an adjustment in the current period.
-- Every create, update, void, import, backup and restore is written to the `audit_log` as a JSON diff.
+- **Books lock:** Settings → `books_locked_through` (for example, after filing taxes). Entries dated on or before that date become read-only: they can't be changed, voided or deleted, and neither can records that contain them. To correct them, post an adjustment in the current period.
+- Every create, update, void, delete, import, backup and restore is written to the `audit_log` as a JSON diff. For deletes, it holds a copy of the removed row.
 
 ### 7.7 Security deposits
 
@@ -680,6 +688,7 @@ The app in this repository implements phases 0–3 of the roadmap, plus parts of
 - **Late fees:** a review queue with bulk approve or waive, or automatic mode, using flat or percent fees with caps and grace days.
 - **Expenses:** quick entry that remembers your last choices, receipt upload, vendors created on the fly, and capital vs repair categories mapped to tax lines.
 - **Reports:** rent roll, aging, monthly collections, P&L (cash or accrual), Schedule E, expense detail, vacancy, lease expirations, deposit register, rent vs market, property performance and 1099. All can be filtered by property, tag or owner, printed, and exported to CSV.
+- **Deleting:** Delete buttons on every record and entry, with confirmation, audit copies, safety backups and books-lock checks (§7.6).
 - **Dashboard:** collection, past-due, occupancy, expiring leases and deposits held, plus a "needs attention" list covering late fees, deposit deadlines, overdue move-outs, new leases starting, expiring documents and vendor insurance, and backup health.
 - **Bulk import:** 7 CSV templates, a dry run that saves nothing, per-row errors with spreadsheet row numbers, and an all-or-nothing commit taken after a backup.
 

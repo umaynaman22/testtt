@@ -13,7 +13,9 @@
       <tbody>{% for b in backups %}<tr><td class="nowrap">{{ b.created|fdate }}</td><td>{{ b.kind|label }}<div class="small muted">{{ b.name }}</div></td>
         <td class="num">{{ (b.size_bytes / 1024)|round(0)|int }} KB</td>
         <td class="actions"><form method="post" action="{{ url_for('admin.backup_restore') }}" data-confirm="Replace ALL current data with the backup from {{ b.created|fdate }}? A safety copy of the current data is taken first.">
-          {{ m.csrf() }}<input type="hidden" name="name" value="{{ b.name }}"><button class="btn small danger">Restore</button></form></td></tr>{% endfor %}
+          {{ m.csrf() }}<input type="hidden" name="name" value="{{ b.name }}"><button class="btn small danger">Restore</button></form>
+          <form method="post" action="{{ url_for('admin.backup_delete') }}" class="inline-form" data-confirm="Delete the backup from {{ b.created|fdate }}? This can't be undone.">
+          {{ m.csrf() }}<input type="hidden" name="name" value="{{ b.name }}"><button class="btn small">Delete</button></form></td></tr>{% endfor %}
       </tbody></table></div>
     {% else %}<p class="muted">No backups yet.</p>{% endif %}
   </div>

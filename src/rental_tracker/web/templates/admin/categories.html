@@ -4,7 +4,7 @@
 {% block content %}
 {{ m.page_head("Expense categories", "Map each category to a tax line (US Schedule E by default). Capital categories are depreciated, not expensed.", crumbs='<a href="' ~ url_for('admin.settings') ~ '">Settings</a>') }}
 <div class="table-wrap"><table>
-  <thead><tr><th>Name</th><th>Tax line</th><th>Capital</th><th>Active</th><th class="num">Used</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Tax line</th><th>Capital</th><th>Active</th><th class="num">Used</th><th></th><th></th></tr></thead>
   <tbody>
   {% for c in cats %}
     <tr><td colspan="6" style="padding:0">
@@ -16,7 +16,8 @@
         <input type="checkbox" name="is_active" value="1" {{ 'checked' if c.is_active }} aria-label="Active">
         <span class="num">{{ usage.get(c.id, 0) }}</span>
         <button class="btn small">Save</button>
-      </form></td></tr>
+      </form></td>
+      <td class="actions"><a class="btn small danger" href="{{ url_for('main.delete_record', kind='category', record_id=c.id) }}">Delete</a></td></tr>
   {% endfor %}
   </tbody></table></div>
 <form method="post" class="card" style="margin-top:16px">

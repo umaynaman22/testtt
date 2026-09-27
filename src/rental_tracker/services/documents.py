@@ -68,13 +68,6 @@ def file_path(data: DataDir, doc: sqlite3.Row) -> Path:
     return path
 
 
-def remove(conn: sqlite3.Connection, doc_id: int) -> None:
-    """Remove the record. The file stays on disk (another record may share it)."""
-    doc = get(conn, doc_id)
-    conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
-    audit(conn, "delete", "document", doc_id, {"title": doc["title"]})
-
-
 def expiring(conn: sqlite3.Connection, before: str) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM documents WHERE expires_on IS NOT NULL AND expires_on <= ? ORDER BY expires_on",

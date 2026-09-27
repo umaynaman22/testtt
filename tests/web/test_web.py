@@ -224,3 +224,47 @@ def test_window_mode_shows_back_button(app):
     c = app.test_client()
     c.get(f"/auth?token={TOKEN}&window=1")
     assert "data-back" in c.get("/").get_data(as_text=True)
+
+
+def test_delete_pages_and_buttons(app, client):
+    token = csrf(client)
+    lease_id = ids(app, "SELECT id FROM leases WHERE status = 'active' LIMIT 1")[0]
+    page = client.get(f"/leases/{lease_id}").get_data(as_text=True)
+    assert "Delete lease" in page and "delete-payment" in page and "delete-charge" in page
+    # every record type has a confirm page that lists what goes
+    for kind, sql in [("owner", "SELECT id FROM owners"), ("property", "SELECT id FROM properties"),
+                      ("unit", "SELECT id FROM units"), ("lease", "SELECT id FROM leases"),
+                      ("tenant", "SELECT id FROM tenants"), ("vendor", "SELECT id FROM vendors"),
+                      ("category", "SELECT id FROM expense_categories")]:
+        rid = ids(app, sql + " LIMIT 1")[0]
+        resp = client.get(f"/delete/{kind}/{rid}")
+        assert resp.status_code == 200 and ("permanently removes" in resp.get_data(as_text=True)
+                                            or "can't be deleted yet" in resp.get_data(as_text=True)), kind
+    assert client.get("/delete/nonsense/1").status_code == 404
+    assert client.get("/delete/property/999999").status_code == 404
+    # a lease with money needs the typed word, then goes, with a safety backup first
+    r = client.post(f"/delete/lease/{lease_id}", data={"csrf_token": token, "confirm": "nope"})
+    assert "Type DELETE" in r.get_data(as_text=True)
+    assert ids(app, f"SELECT COUNT(*) FROM leases WHERE id = {lease_id}")[0] == 1
+    r = client.post(f"/delete/lease/{lease_id}", data={"csrf_token": token, "confirm": "DELETE"})
+    assert r.status_code == 302 and "/units/" in r.headers["Location"]
+    assert ids(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lease_id}")[0] == 0
+    backups = list((app.extensions["rental_tracker"].data.backups / "snapshots").glob("*before-delete-lease*"))
+    assert backups
+
+
+def test_delete_single_entries(app, client):
+    token = csrf(client)
+    pay = ids(app, "SELECT id FROM payments WHERE voided_at IS NULL LIMIT 1")[0]
+    lease = ids(app, f"SELECT lease_id FROM payments WHERE id = {pay}")[0]
+    other = ids(app, f"SELECT id FROM leases WHERE id <> {lease} LIMIT 1")[0]
+    assert client.post(f"/leases/{other}/delete-payment/{pay}", data={"csrf_token": token}).status_code == 404
+    client.post(f"/leases/{lease}/delete-payment/{pay}", data={"csrf_token": token})
+    assert ids(app, f"SELECT COUNT(*) FROM payments WHERE id = {pay}")[0] == 0
+    pay2 = ids(app, "SELECT id FROM payments LIMIT 1")[0]
+    r = client.post(f"/payments/{pay2}/delete", data={"csrf_token": token, "next": "/payments?start=2026-01-01"})
+    assert r.headers["Location"].endswith("/payments?start=2026-01-01")
+    exp = ids(app, "SELECT id FROM expenses LIMIT 1")[0]
+    client.post(f"/expenses/{exp}/delete", data={"csrf_token": token})
+    assert ids(app, f"SELECT COUNT(*) FROM expenses WHERE id = {exp}")[0] == 0
+    assert ids(app, "SELECT COUNT(*) FROM audit_log WHERE action = 'delete'")[0] >= 3

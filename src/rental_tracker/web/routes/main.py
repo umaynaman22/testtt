@@ -5,10 +5,11 @@ import hmac
 import logging
 import threading
 
-from flask import Blueprint, abort, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
 
 from ...services import dashboard as dashboard_svc
-from ...services import documents
+from ... import db as dbmod
+from ...services import backup, deletion, documents
 from ...services import search as search_svc
 from .. import attempt, db, state, today
 from ..forms import Form
@@ -98,6 +99,49 @@ def document_upload():
 
 @bp.route("/documents/<int:doc_id>/delete", methods=["POST"])
 def document_delete(doc_id: int):
-    with attempt("Document removed"):
-        documents.remove(db(), doc_id)
+    with attempt() as r:
+        r["msg"] = deletion.delete_document(db(), doc_id)
+    if r["done"]:
+        flash(r["msg"], "ok")
     return redirect(safe_next(request.form.get("next"), url_for("main.dashboard")))
+
+
+# Where to go after deleting, and where "Cancel" goes.
+AFTER_DELETE = {
+    "owner": lambda p: url_for("properties.owners"),
+    "property": lambda p: url_for("properties.index"),
+    "unit": lambda p: url_for("properties.detail", pid=p.parent["property_id"]),
+    "lease": lambda p: url_for("properties.unit_detail", unit_id=p.parent["unit_id"]),
+    "tenant": lambda p: url_for("tenants.index"),
+    "vendor": lambda p: url_for("expenses.vendors"),
+    "category": lambda p: url_for("admin.categories"),
+}
+RECORD_PAGE = {
+    "owner": ("properties.owner_edit", "owner_id"), "property": ("properties.detail", "pid"),
+    "unit": ("properties.unit_detail", "unit_id"), "lease": ("leases.detail", "lease_id"),
+    "tenant": ("tenants.detail", "tid"), "vendor": ("expenses.vendor_detail", "vendor_id"),
+}
+
+
+@bp.route("/delete/<kind>/<int:record_id>", methods=["GET", "POST"])
+def delete_record(kind: str, record_id: int):
+    """Show exactly what a delete removes, then do it (after a safety backup)."""
+    if kind not in deletion.KINDS:
+        abort(404)
+    conn = db()
+    p = deletion.preview(conn, kind, record_id)
+    if request.method == "POST":
+        typed, move_to = request.form.get("confirm"), request.form.get("move_to", type=int)
+        try:
+            deletion.validate(p, typed, move_to)
+            backup.create_backup(conn, state().data, "snapshots", f"before-delete-{kind}")
+            with dbmod.transaction(conn):
+                deletion.delete(conn, kind, record_id, typed=typed, move_to=move_to)
+            flash(f"Deleted {p.label}. A backup was saved just before, in case you need it back "
+                  "(Backups page).", "ok")
+            return redirect(AFTER_DELETE[kind](p))
+        except (ValueError, OSError) as e:
+            flash(str(e), "error")
+    endpoint, arg = RECORD_PAGE.get(kind, ("admin.categories", None))
+    cancel = url_for(endpoint, **({arg: record_id} if arg else {}))
+    return render_template("delete.html", p=p, cancel_url=cancel, confirm_word=deletion.CONFIRM_WORD)

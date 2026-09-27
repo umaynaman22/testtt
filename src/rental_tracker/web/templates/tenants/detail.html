@@ -4,6 +4,7 @@
 {% block content %}
 {% call m.page_head(tenant.first_name ~ " " ~ tenant.last_name, crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a>') %}
   <a class="btn" href="{{ url_for('tenants.edit', tid=tenant.id) }}">Edit</a>
+  {{ m.delete_link('tenant', tenant.id) }}
 {% endcall %}
 <div class="split">
   <div class="card"><h2>Leases</h2>

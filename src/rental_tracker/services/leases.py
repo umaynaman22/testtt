@@ -154,14 +154,6 @@ def sign_draft(conn: sqlite3.Connection, lease_id: int, today: date) -> str:
     return status
 
 
-def delete_draft(conn: sqlite3.Connection, lease_id: int) -> None:
-    lease = ledger.lease_row(conn, lease_id)
-    if lease["status"] != "draft":
-        raise ServiceError("Only draft leases can be deleted")
-    conn.execute("DELETE FROM leases WHERE id = ?", (lease_id,))
-    audit(conn, "delete", "lease", lease_id)
-
-
 def activate_due(conn: sqlite3.Connection, today: date) -> int:
     """Future leases whose start date has arrived become active, ending the lease they replace."""
     n = 0

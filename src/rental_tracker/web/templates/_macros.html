@@ -56,6 +56,16 @@
 </details>
 {%- endmacro %}
 
+{% macro delete_button(action, message, label="Delete", next=None, cls="btn small danger") -%}
+<form method="post" action="{{ action }}" class="inline-form" data-confirm="{{ message }}">{{ csrf() }}
+  {%- if next %}<input type="hidden" name="next" value="{{ next }}">{% endif -%}
+  <button class="{{ cls }}">{{ label }}</button></form>
+{%- endmacro %}
+
+{% macro delete_link(kind, record_id, label="Delete") -%}
+<a class="btn danger" href="{{ url_for('main.delete_record', kind=kind, record_id=record_id) }}">{{ label }}</a>
+{%- endmacro %}
+
 {% macro docs(documents, related_type, related_id) -%}
 <div class="card">
   <h2>Documents <span class="side muted">{{ documents|length }}</span></h2>
@@ -64,8 +74,7 @@
     {% for d in documents %}
     <li><a href="{{ url_for('main.document', doc_id=d.id) }}" target="_blank">{{ d.title }}</a>
       <span class="muted">· {{ d.doc_type|label }} · {{ (d.size_bytes / 1024)|round(0)|int }} KB{% if d.expires_on %} · expires {{ d.expires_on|fdate }}{% endif %}</span>
-      <form method="post" action="{{ url_for('main.document_delete', doc_id=d.id) }}" style="display:inline" data-confirm="Remove this document from the record?">
-        {{ csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn link small">remove</button></form>
+      {{ delete_button(url_for('main.document_delete', doc_id=d.id), "Delete this document from the record?", label="delete", next=request.full_path, cls="btn link small") }}
     </li>
     {% endfor %}
   </ul>

@@ -7,6 +7,7 @@
   <a class="btn" href="{{ url_for('reports.view', key='income-statement', property=prop.id) }}">P&amp;L</a>
   <a class="btn" href="{{ url_for('expenses.index', property=prop.id) }}">Add expense</a>
   <a class="btn" href="{{ url_for('properties.edit', pid=prop.id) }}">Edit</a>
+  {{ m.delete_link('property', prop.id) }}
 {% endcall %}
 <section class="kpis">
   <div class="kpi"><div class="label">Owner</div><div class="value" style="font-size:1.05rem">{{ prop.owner_name }}</div><div class="sub">{{ prop.property_type|label }}{% if prop.status != 'active' %} · {{ prop.status|label }}{% endif %}</div></div>

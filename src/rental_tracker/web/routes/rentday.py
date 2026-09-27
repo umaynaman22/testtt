@@ -9,11 +9,11 @@ from flask import Blueprint, Response, abort, flash, redirect, render_template, 
 from ... import db as dbmod
 from ...domain.money import format_money
 from ...domain.periods import add_periods, parse_period, period_end, period_start
-from ...services import late_fees, ledger, portfolio, rent_posting, rentday
+from ...services import deletion, late_fees, ledger, portfolio, rent_posting, rentday
 from ...services.common import csv_row
 from .. import attempt, db, today
 from ..forms import Form
-from . import current_period, options
+from . import current_period, options, safe_next
 
 bp = Blueprint("rentday", __name__)
 METHOD_LABELS = {"app_transfer": "App (Zelle, Venmo…)", "housing_assistance": "Housing assistance"}
@@ -126,6 +126,15 @@ def payments():
     props = [(p["id"], p["code"]) for p in portfolio.list_properties(db(), status="all")]
     return render_template("rentday/payments.html", rows=rows, total=total, start=start, end=end,
                            methods=options([*ledger.PAYMENT_METHODS, "deposit_applied"], METHOD_LABELS), props=props)
+
+
+@bp.route("/payments/<int:payment_id>/delete", methods=["POST"])
+def delete_payment(payment_id: int):
+    with attempt() as r:
+        r["msg"] = deletion.delete_payment(db(), payment_id)
+    if r["done"]:
+        flash(r["msg"], "ok")
+    return redirect(safe_next(request.form.get("next"), url_for("rentday.payments")))
 
 
 @bp.route("/payments/<int:payment_id>/receipt")

@@ -133,6 +133,18 @@ def backup_restore():
     return redirect(url_for("admin.backups"))
 
 
+@bp.route("/backups/delete", methods=["POST"])
+def backup_delete():
+    try:
+        name = backup.delete_backup(state().data, request.form.get("name", ""))
+        audit_conn = db()
+        audit(audit_conn, "delete", "backup", changes={"file": name})
+        flash(f"Deleted backup {name}.", "ok")
+    except ServiceError as e:
+        flash(str(e), "error")
+    return redirect(url_for("admin.backups"))
+
+
 # ---- import -------------------------------------------------------------------
 
 def _pending_dir(token: str) -> Path:

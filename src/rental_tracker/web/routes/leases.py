@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from ...domain.money import format_money
 from ...domain.periods import add_months, parse_date
-from ...services import documents, leases, ledger, portfolio, rent_posting, tenants
+from ...services import deletion, documents, leases, ledger, portfolio, rent_posting, tenants
 from ...services.common import get_setting
 from .. import attempt, db, today
 from ..forms import Form, values_from
@@ -333,12 +333,45 @@ def sign(lease_id: int):
     return _back(lease_id)
 
 
-@bp.route("/leases/<int:lease_id>/delete-draft", methods=["POST"])
-def delete_draft(lease_id: int):
-    unit_id = ledger.lease_row(db(), lease_id)["unit_id"]
-    with attempt("Draft deleted") as r:
-        leases.delete_draft(db(), lease_id)
-    return redirect(url_for("properties.unit_detail", unit_id=unit_id)) if r["done"] else _back(lease_id)
+def _delete_entry(lease_id: int, table: str, entry_id: int, action, anchor: str):
+    """Delete one ledger/deposit/terms entry that belongs to this lease."""
+    row = db().execute(f"SELECT lease_id FROM {table} WHERE id = ?", (entry_id,)).fetchone()
+    if row is None or row[0] != lease_id:
+        abort(404)
+    with attempt() as r:
+        r["msg"] = action()
+    if r["done"]:
+        flash(r["msg"], "ok")
+    return _back(lease_id, anchor)
+
+
+@bp.route("/leases/<int:lease_id>/delete-charge/<int:charge_id>", methods=["POST"])
+def delete_charge(lease_id: int, charge_id: int):
+    return _delete_entry(lease_id, "charges", charge_id,
+                         lambda: deletion.delete_charge(db(), charge_id, today()), "ledger")
+
+
+@bp.route("/leases/<int:lease_id>/delete-payment/<int:payment_id>", methods=["POST"])
+def delete_payment(lease_id: int, payment_id: int):
+    return _delete_entry(lease_id, "payments", payment_id, lambda: deletion.delete_payment(db(), payment_id), "ledger")
+
+
+@bp.route("/leases/<int:lease_id>/delete-deposit/<int:txn_id>", methods=["POST"])
+def delete_deposit(lease_id: int, txn_id: int):
+    return _delete_entry(lease_id, "deposit_transactions", txn_id,
+                         lambda: deletion.delete_deposit(db(), txn_id), "deposit")
+
+
+@bp.route("/leases/<int:lease_id>/rent-change/<int:change_id>/delete", methods=["POST"])
+def delete_rent_change(lease_id: int, change_id: int):
+    return _delete_entry(lease_id, "lease_rent_changes", change_id,
+                         lambda: deletion.delete_rent_change(db(), change_id), "terms")
+
+
+@bp.route("/leases/<int:lease_id>/recurring/<int:rc_id>/delete", methods=["POST"])
+def delete_recurring(lease_id: int, rc_id: int):
+    return _delete_entry(lease_id, "lease_recurring_charges", rc_id,
+                         lambda: deletion.delete_recurring_charge(db(), rc_id), "terms")
 
 
 @bp.route("/leases/<int:lease_id>/statement")

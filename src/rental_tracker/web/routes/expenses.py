@@ -4,14 +4,14 @@ from __future__ import annotations
 import csv
 import io
 
-from flask import Blueprint, Response, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, flash, redirect, render_template, request, session, url_for
 
 from ...domain.periods import period_start
-from ...services import documents, expenses, portfolio
+from ...services import deletion, documents, expenses, portfolio
 from ...services.common import csv_row
 from .. import attempt, db, state, today
 from ..forms import Form, values_from
-from . import current_period, options
+from . import current_period, options, safe_next
 
 bp = Blueprint("expenses", __name__)
 METHOD_LABELS = {"autopay": "Autopay / auto-debit"}
@@ -100,6 +100,16 @@ def detail(expense_id: int):
 def void(expense_id: int):
     with attempt("Expense voided"):
         expenses.void_expense(db(), expense_id, request.form.get("reason", ""))
+    return redirect(url_for("expenses.detail", expense_id=expense_id))
+
+
+@bp.route("/expenses/<int:expense_id>/delete", methods=["POST"])
+def delete(expense_id: int):
+    with attempt() as r:
+        r["msg"] = deletion.delete_expense(db(), expense_id)
+    if r["done"]:
+        flash(r["msg"], "ok")
+        return redirect(safe_next(request.form.get("next"), url_for("expenses.index")))
     return redirect(url_for("expenses.detail", expense_id=expense_id))
 
 

@@ -204,6 +204,14 @@ def restore_backup(conn: sqlite3.Connection, data: DataDir, path: Path) -> Path:
     return safety
 
 
+def delete_backup(data: DataDir, name: str) -> str:
+    path = resolve_backup(data, name)
+    if len(list_backups(data)) <= 1:
+        raise ServiceError("This is your only backup, so it can't be deleted.")
+    path.unlink()
+    return path.name
+
+
 def resolve_backup(data: DataDir, name: str) -> Path:
     """Find a backup by file name, refusing anything outside the backups folder."""
     for b in list_backups(data):

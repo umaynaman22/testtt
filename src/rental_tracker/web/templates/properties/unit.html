@@ -5,6 +5,7 @@
 {% call m.page_head(unit.property_code ~ " · unit " ~ unit.unit_label, unit.property_name,
       crumbs='<a href="' ~ url_for('properties.index') ~ '">Properties</a> / <a href="' ~ url_for('properties.detail', pid=unit.property_id) ~ '">' ~ unit.property_code ~ '</a>') %}
   {% if unit.status == 'active' %}<a class="btn primary" href="{{ url_for('leases.new', unit_id=unit.id) }}">New lease</a>{% endif %}
+  {{ m.delete_link('unit', unit.id, 'Delete unit') }}
 {% endcall %}
 <div class="split">
   <div class="card">
