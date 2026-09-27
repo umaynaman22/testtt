@@ -77,7 +77,19 @@
             <td class="nowrap">{{ e.date|fdate }}</td>
             <td>{{ e.description }}{% if e.voided_at %} <span class="small keep">(voided: {{ e.void_reason }})</span>{% endif %}</td>
             <td class="num">{{ e.charge|money(true) }}</td>
-            <td class="num {{ 'pos' if e.kind == 'payment' }}">{{ e.credit|money(true) }}</td>
+            <td class="num {{ 'pos' if e.kind == 'payment' }}">
+              {%- if e.unpaid is none %}{{ e.credit|money(true) }}
+              {%- elif e.unpaid == 0 %}<span class="small pos keep">Paid</span>
+              {%- else %}
+                {% if e.unpaid < e.charge %}<div class="small muted keep">{{ (e.charge - e.unpaid)|money }} paid</div>{% endif %}
+                <details class="pay-line keep"><summary class="btn small">Mark paid</summary>
+                  <form method="post" action="{{ url_for('leases.pay_line', lease_id=lease.id, charge_id=e.id) }}">
+                    {{ m.csrf() }}<input name="amount" inputmode="decimal" autocomplete="off" value="{{ e.unpaid|input_money }}"
+                      aria-label="Amount paid (change it for a partial payment)" title="Change the amount for a partial payment">
+                    <button class="btn small primary">Save</button>
+                  </form>
+                </details>
+              {%- endif %}</td>
             <td class="num keep">{{ e.balance|money }}</td>
             <td class="actions keep"><div class="row-actions">
               {% if e.kind == 'payment' %}

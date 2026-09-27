@@ -13,6 +13,20 @@ def rent(i, period, due, amount=100000):
     return LedgerCharge(i, "rent", amount, due, period)
 
 
+def test_payment_toward_a_line_pays_that_line_first():
+    charges = [rent(1, "2026-01", D(2026, 1, 1)), rent(2, "2026-02", D(2026, 2, 1)), rent(3, "2026-03", D(2026, 3, 1))]
+    alloc = allocate(charges, [LedgerPayment(1, 100000, D(2026, 2, 1), charge_id=2)])
+    assert alloc.unpaid == {1: 100000, 2: 0, 3: 100000}  # February marked paid, January still owed
+    alloc = allocate(charges, [LedgerPayment(1, 130000, D(2026, 2, 1), charge_id=2)])  # extra goes oldest first
+    assert alloc.unpaid == {1: 70000, 2: 0, 3: 100000}
+    alloc = allocate(charges, [LedgerPayment(1, 40000, D(2026, 3, 1), charge_id=3)])  # part of a line
+    assert alloc.unpaid[3] == 60000 and alloc.unpaid[1] == 100000
+    alloc = allocate(charges, [LedgerPayment(1, 50000, D(2026, 2, 1), charge_id=99)])  # unknown line: oldest first
+    assert alloc.unpaid[1] == 50000
+    assert unpaid_for_period(charges, [LedgerPayment(1, 100000, D(2026, 2, 1), charge_id=2)], "2026-02",
+                             D(2026, 2, 6)) == 0  # paid on time, so no late fee for February
+
+
 def test_oldest_first_and_rent_before_fees():
     charges = [rent(1, "2026-01", D(2026, 1, 1)),
                LedgerCharge(2, "late_fee", 5000, D(2026, 1, 1), "2026-01"),

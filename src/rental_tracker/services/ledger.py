@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from datetime import date
 
 from ..domain.allocation import LedgerCharge, LedgerPayment, aging, allocate, oldest_unpaid_due
+from ..domain.money import format_money
 from ..domain.periods import parse_date
 from .common import ServiceError, audit, ensure_open, get_setting, now_utc, row_or_error, set_setting
 
@@ -57,10 +58,10 @@ def load_ledgers(conn: sqlite3.Connection, lease_ids: Iterable[int] | None = Non
                           f"WHERE voided_at IS NULL{flt}", params):
         out[r["lease_id"]][0].append(LedgerCharge(r["id"], r["charge_type"], r["amount_cents"],
                                                   date.fromisoformat(r["due_date"]), r["period"]))
-    for r in conn.execute("SELECT id, lease_id, amount_cents, received_date FROM payments "
+    for r in conn.execute("SELECT id, lease_id, amount_cents, received_date, charge_id FROM payments "
                           f"WHERE voided_at IS NULL{flt}", params):
         out[r["lease_id"]][1].append(LedgerPayment(r["id"], r["amount_cents"],
-                                                   date.fromisoformat(r["received_date"])))
+                                                   date.fromisoformat(r["received_date"]), r["charge_id"]))
     return dict(out)
 
 
@@ -103,19 +104,26 @@ def period_status(conn: sqlite3.Connection, period: str, lease_ids: Iterable[int
 def ledger_entries(conn: sqlite3.Connection, lease_id: int) -> list[dict]:
     """Charges and payments in date order with a running balance (voided rows shown, not counted)."""
     rows: list[dict] = []
+    charges, payments = load_ledgers(conn, [lease_id]).get(lease_id, ([], []))
+    unpaid = allocate(charges, payments, payment_order(conn)).unpaid
+    names = {}
     for r in conn.execute("SELECT * FROM charges WHERE lease_id = ?", (lease_id,)):
+        names[r["id"]] = r["description"] or r["charge_type"].replace("_", " ").capitalize()
         rows.append({"kind": "charge", "id": r["id"], "date": r["due_date"], "type": r["charge_type"],
-                     "description": r["description"] or r["charge_type"].replace("_", " ").capitalize(),
+                     "description": names[r["id"]],
                      "period": r["period"], "charge": r["amount_cents"] if r["amount_cents"] > 0 else 0,
                      "credit": -r["amount_cents"] if r["amount_cents"] < 0 else 0,
                      "voided_at": r["voided_at"], "void_reason": r["void_reason"],
-                     "source": r["source"], "sort": (r["due_date"], 0, r["id"])})
+                     "source": r["source"], "sort": (r["due_date"], 0, r["id"]),
+                     "unpaid": unpaid.get(r["id"]) if not r["voided_at"] and r["amount_cents"] > 0 else None})
     for r in conn.execute("SELECT * FROM payments WHERE lease_id = ?", (lease_id,)):
         desc = f"Payment — {method_name(r['method'], r['method_other'])}"
+        if r["charge_id"] in names:
+            desc += f", for {names[r['charge_id']]}"
         rows.append({"kind": "payment", "id": r["id"], "date": r["received_date"], "type": r["method"],
                      "description": desc, "period": None, "charge": 0, "credit": r["amount_cents"],
                      "voided_at": r["voided_at"], "void_reason": r["void_reason"],
-                     "receipt_number": r["receipt_number"], "notes": r["notes"],
+                     "receipt_number": r["receipt_number"], "notes": r["notes"], "unpaid": None,
                      "sort": (r["received_date"], 1, r["id"])})
     rows.sort(key=lambda x: x["sort"])
     running = 0
@@ -183,10 +191,11 @@ def next_receipt_number(conn: sqlite3.Connection, year: int) -> str:
 def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, received: str | None,
                    method: str | None, reference: str | None = None, notes: str | None = None,
                    paid_by_tenant_id: int | None = None, allow_deposit_method: bool = False,
-                   method_other: str | None = None) -> int:
+                   method_other: str | None = None, charge_id: int | None = None) -> int:
     """Record money received. Date defaults to today and method to 'other'.
 
     method_other is what was typed for "Other" (e.g. 'PayMaya'); it's ignored for the other methods.
+    charge_id makes it a payment toward that line of the history (see domain.allocation).
     """
     _positive(amount, "The amount paid")
     received = received or date.today().isoformat()
@@ -195,14 +204,17 @@ def record_payment(conn: sqlite3.Connection, lease_id: int, amount: int | None, 
         raise ServiceError("Unknown payment method")
     method_other = (" ".join((method_other or "").split())[:60] or None) if method == "other" else None
     lease_row(conn, lease_id)
+    if charge_id is not None and not conn.execute("SELECT 1 FROM charges WHERE id = ? AND lease_id = ?",
+                                                  (charge_id, lease_id)).fetchone():
+        raise ServiceError("That line isn't on this tenant's account")
     received_d = parse_date(received)
     ensure_open(conn, received_d)
     cur = conn.execute(
         """INSERT INTO payments(lease_id, paid_by_tenant_id, received_date, amount_cents, method,
-                                method_other, reference, receipt_number, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                method_other, reference, receipt_number, notes, charge_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (lease_id, paid_by_tenant_id, received_d.isoformat(), amount, method, method_other, reference or None,
-         next_receipt_number(conn, received_d.year), notes or None))
+         next_receipt_number(conn, received_d.year), notes or None, charge_id))
     audit(conn, "insert", "payment", cur.lastrowid, {"lease_id": lease_id, "amount": amount, "method": method,
                                                          "method_other": method_other})
     return cur.lastrowid
@@ -226,8 +238,35 @@ def fill_rent_paid(conn: sqlite3.Connection, lease_id: int, through: date, today
     items = unpaid_rent(conn, lease_id, through)
     for c, amount in items:
         record_payment(conn, lease_id, amount, c.due_date.isoformat(), method,
-                       notes=f"Filled in: rent {c.period or c.due_date.isoformat()}", method_other=method_other)
+                       notes=f"Filled in: rent {c.period or c.due_date.isoformat()}", method_other=method_other,
+                       charge_id=c.id)
     return len(items), sum(amount for _, amount in items)
+
+
+def pay_line(conn: sqlite3.Connection, lease_id: int, charge_id: int, amount: int | None, today: date) -> dict:
+    """Mark one line of the history (a rent bill, a debt…) as paid, or partly paid.
+
+    Records a payment toward that line, dated on its due date (never in the future), with
+    the tenant's usual payment method. Blank amount = whatever is left on the line.
+    """
+    c = row_or_error(conn, "SELECT * FROM charges WHERE id = ? AND lease_id = ?", (charge_id, lease_id), "Line")
+    if c["voided_at"] or c["amount_cents"] <= 0:
+        raise ServiceError("This line isn't something to pay")
+    charges, payments = load_ledgers(conn, [lease_id]).get(lease_id, ([], []))
+    left = allocate(charges, payments, payment_order(conn)).unpaid.get(charge_id, 0)
+    if left <= 0:
+        raise ServiceError("This line is already paid")
+    amount = left if amount is None else amount
+    if amount > left:
+        raise ServiceError(f"That's more than the {format_money(left)} left on this line")
+    last = conn.execute("SELECT method, method_other FROM payments WHERE lease_id = ? AND voided_at IS NULL "
+                        "ORDER BY received_date DESC, id DESC LIMIT 1", (lease_id,)).fetchone()
+    method = last["method"] if last and last["method"] in PAYMENT_METHODS else None
+    when = min(parse_date(c["due_date"]), today)
+    pid = record_payment(conn, lease_id, amount, when.isoformat(), method, charge_id=charge_id,
+                         method_other=last["method_other"] if method == "other" else None)
+    return {"payment_id": pid, "amount": amount, "left": left - amount,
+            "line": c["description"] or c["charge_type"].replace("_", " ").capitalize()}
 
 
 def void_payment(conn: sqlite3.Connection, payment_id: int, reason: str,

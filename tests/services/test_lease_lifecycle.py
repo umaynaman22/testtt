@@ -124,3 +124,26 @@ def test_bill_from_move_in_rebuilds_rent(conn, owner_id):
     leases.bill_from_move_in(conn, lid, "2026-04-01", date(2026, 3, 15))  # a later date: not moved in yet
     assert leases.get_lease(conn, lid)["status"] == "future"
     assert conn.execute("SELECT COUNT(*) FROM charges WHERE lease_id = ? AND charge_type = 'rent'", (lid,)).fetchone()[0] == 0
+
+
+def test_pay_line_full_and_partial(conn, owner_id):
+    today = date(2026, 3, 15)
+    lid = make_lease(conn, owner_id, start="2026-01-01", end=None, rent=100000, today=today)
+    rent = {r["period"]: r["id"] for r in conn.execute(
+        "SELECT id, period FROM charges WHERE lease_id = ? AND charge_type = 'rent'", (lid,))}
+    ledger.record_payment(conn, lid, 1, "2026-01-02", "gcash")  # the tenant's usual method
+    res = ledger.pay_line(conn, lid, rent["2026-02"], None, today)  # the whole line
+    assert res["amount"] == 100000 and res["left"] == 0
+    pay = conn.execute("SELECT * FROM payments WHERE id = ?", (res["payment_id"],)).fetchone()
+    assert (pay["received_date"], pay["method"], pay["charge_id"]) == ("2026-02-01", "gcash", rent["2026-02"])
+    entries = {e["id"]: e for e in ledger.ledger_entries(conn, lid) if e["kind"] == "charge"}
+    assert entries[rent["2026-02"]]["unpaid"] == 0 and entries[rent["2026-01"]]["unpaid"] == 99999
+    assert any(e["description"] == "Payment — GCash, for Rent 2026-02" for e in ledger.ledger_entries(conn, lid))
+    res = ledger.pay_line(conn, lid, rent["2026-03"], 30000, today)  # part of it
+    assert res["left"] == 70000
+    with pytest.raises(ServiceError, match="more than"):
+        ledger.pay_line(conn, lid, rent["2026-03"], 70001, today)
+    with pytest.raises(ServiceError, match="already paid"):
+        ledger.pay_line(conn, lid, rent["2026-02"], None, today)
+    conn.execute("DELETE FROM charges WHERE id = ?", (rent["2026-02"],))  # line removed: payment stays, unlinked
+    assert conn.execute("SELECT charge_id FROM payments WHERE id = ?", (pay["id"],)).fetchone()[0] is None

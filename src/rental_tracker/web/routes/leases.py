@@ -171,6 +171,21 @@ def fill_rent(lease_id: int):
     return _back(lease_id, "history")
 
 
+@bp.route("/leases/<int:lease_id>/pay-line/<int:charge_id>", methods=["POST"])
+def pay_line(lease_id: int, charge_id: int):
+    """"Mark paid" on one line of the payment history: the whole amount, or part of it."""
+    f = Form(request.form)
+    with attempt() as r:
+        amount = f.money("amount", "Amount")
+        f.check()
+        r["res"] = ledger.pay_line(db(), lease_id, charge_id, amount, today())
+    if r["done"]:
+        res = r["res"]
+        flash(f"{res['line']}: paid." if not res["left"] else
+              f"{res['line']}: {format_money(res['amount'])} paid, {format_money(res['left'])} left.", "ok")
+    return _back(lease_id, "history")
+
+
 @bp.route("/leases/<int:lease_id>/debt", methods=["POST"])
 def debt(lease_id: int):
     """Money owed besides rent. It's added to the balance like any other bill."""

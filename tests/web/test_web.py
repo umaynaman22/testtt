@@ -232,6 +232,37 @@ def test_older_tenants_edit_checkbox(app, client):
     assert 'name="bill_from_move_in"' not in client.get(f"/leases/{lid}/edit").get_data(as_text=True)
 
 
+def test_mark_a_history_line_paid(app, client):
+    token = csrf(client)
+    pid = client.post("/properties/new", data={"csrf_token": token, "name": "8 Tala St"}).headers["Location"].split("/")[-1]
+    unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
+    lid = client.post("/tenants/new", data={"csrf_token": token, "unit_id": unit, "name": "Joy Bautista",
+                                            "rent": "6000", "moved_in": "2026-07-01"}).headers["Location"].split("/")[-1]
+    rent = dict(dbmod.connect(app.extensions["rental_tracker"].data.db).execute(
+        f"SELECT period, id FROM charges WHERE lease_id = {lid} AND charge_type = 'rent'").fetchall())
+    page = client.get(f"/leases/{lid}").get_data(as_text=True)
+    assert page.count("Mark paid") == 3
+    # August is paid, even though July is still open
+    r = client.post(f"/leases/{lid}/pay-line/{rent['2026-08']}", data={"csrf_token": token, "amount": "6000"},
+                    follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert "Rent 2026-08: paid." in page and page.count("Mark paid") == 2 and ">Paid</span>" in page
+    assert q(app, f"SELECT received_date FROM payments WHERE lease_id = {lid}") == ["2026-08-01"]
+    # part of September
+    r = client.post(f"/leases/{lid}/pay-line/{rent['2026-09']}", data={"csrf_token": token, "amount": "2,500"},
+                    follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert "Rent 2026-09: ₱2,500.00 paid, ₱3,500.00 left." in page and "₱2,500.00 paid</div>" in page
+    assert 'value="3500.00"' in page  # the button now offers what's left
+    # July is still the one that's owed (and late)
+    assert q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}") == [600000 + 350000]
+    r = client.post(f"/leases/{lid}/pay-line/{rent['2026-08']}", data={"csrf_token": token}, follow_redirects=True)
+    assert "already paid" in r.get_data(as_text=True)
+    other = q(app, f"SELECT id FROM charges WHERE lease_id <> {lid} LIMIT 1")[0]
+    r = client.post(f"/leases/{lid}/pay-line/{other}", data={"csrf_token": token}, follow_redirects=True)
+    assert q(app, f"SELECT COUNT(*) FROM payments WHERE lease_id = {lid}") == [2]  # someone else's line: nothing
+
+
 def test_tenant_without_property_can_be_linked_later(app, client):
     token = csrf(client)
     r = client.post("/tenants/new", data={"csrf_token": token, "name": "Sam Lee"})

@@ -199,6 +199,12 @@ details.section > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 .tabs a:hover { text-decoration: none; color: var(--text); }
 
 /* ---- rent day ---- */
+details.pay-line { display: inline-block; text-align: right; }
+details.pay-line > summary { list-style: none; cursor: pointer; }
+details.pay-line > summary::-webkit-details-marker { display: none; }
+details.pay-line[open] > summary { display: none; }
+details.pay-line form { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+details.pay-line input { width: 96px; text-align: right; }
 .rentday input.amt { width: 96px; text-align: right; }
 .rentday input.method-other { width: 144px; margin-top: 4px; display: none; }
 .rentday select[data-method]:has(option[value="other"]:checked) + input.method-other { display: block; }

@@ -28,6 +28,7 @@ class LedgerPayment:
     id: int
     amount_cents: int
     received_date: date
+    charge_id: int | None = None  # paid toward this line of the history; any extra goes oldest first
 
 
 @dataclass
@@ -48,16 +49,26 @@ def allocate(charges: Iterable[LedgerCharge], payments: Iterable[LedgerPayment],
              order: str = "oldest_first_rent_before_fees", as_of: date | None = None) -> Allocation:
     """Apply payments and credits to positive charges in priority order.
 
+    A payment made toward a particular charge ("mark this line paid") pays that
+    charge first; everything else is applied in ``order``.
     With ``as_of``, only charges due and money received on or before that day count.
     """
     charges = [c for c in charges if as_of is None or c.due_date <= as_of]
-    funds = sum(p.amount_cents for p in payments if as_of is None or p.received_date <= as_of)
+    left = {c.id: c.amount_cents for c in charges if c.amount_cents > 0}
+    funds = 0
+    for p in payments:
+        if as_of is not None and p.received_date > as_of:
+            continue
+        applied = min(p.amount_cents, left[p.charge_id]) if p.charge_id in left else 0
+        if applied:
+            left[p.charge_id] -= applied
+        funds += p.amount_cents - applied
     funds += sum(-c.amount_cents for c in charges if c.amount_cents < 0)
     result = Allocation()
     for c in sorted((c for c in charges if c.amount_cents > 0), key=_sort_key(order)):
-        applied = min(funds, c.amount_cents)
+        applied = min(funds, left[c.id])
         funds -= applied
-        result.unpaid[c.id] = c.amount_cents - applied
+        result.unpaid[c.id] = left[c.id] - applied
     result.unapplied_credit = funds
     return result
 
