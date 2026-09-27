@@ -691,7 +691,7 @@ At the owner's request the app was **simplified to the essentials**: add a unit,
 - **Late:** who is behind, by how many days and how much; optional late fees that you charge or skip.
 - **Reports:** rent roll, who owes money, monthly collections. All printable and exportable to CSV.
 - **Settings:** your name for receipts, default late fee and grace days, when to bill rent, proration method.
-- **Delete:** on everything, with a confirmation page for units and tenants.
+- **Delete:** on everything, straight away with no confirmation (at the owner's request). A backup is saved automatically before a unit, tenant or tenancy is deleted, and every deleted row is copied to the audit log.
 
 **Kept in the background, without screens**
 

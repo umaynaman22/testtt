@@ -65,8 +65,7 @@ def test_every_page_renders(app, client):
              "/tenants?format=csv", "/tenants/new", f"/tenants/new?unit_id={unit}", f"/tenants/{tid}",
              f"/tenants/{tid}/edit", "/rent-day", "/rent-day?period=2026-08&show=unpaid", "/late", "/payments",
              "/payments?format=csv", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=rizal",
-             "/search?q=zzzz", f"/delete/property/{pid}", f"/delete/unit/{unit}", f"/delete/lease/{lease}",
-             f"/delete/tenant/{tid}"]
+             "/search?q=zzzz"]
     for key in ("rent-roll", "aging", "collections"):
         pages += [f"/reports/{key}", f"/reports/{key}?format=csv", f"/reports/{key}?property={pid}"]
     for lid in q(app, "SELECT id FROM leases"):
@@ -263,7 +262,9 @@ def test_units_not_properties(app, client):
     assert client.post(f"/properties/{pid}/units", data={"csrf_token": token}).status_code in (404, 405)
     unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
     assert client.get(f"/units/{unit}").headers["Location"].endswith(f"/properties/{pid}")
-    assert "the unit" in client.get(f"/delete/property/{pid}").get_data(as_text=True)
+    r = client.post(f"/delete/property/{pid}", data={"csrf_token": token}, follow_redirects=True)
+    assert "Deleted Unit 2B Sunrise Apartments" in r.get_data(as_text=True)
+    assert q(app, f"SELECT COUNT(*) FROM properties WHERE id = {pid}") == [0]
 
 
 def test_old_multi_unit_properties_are_split_on_startup(app):
@@ -364,12 +365,18 @@ def test_money_is_in_pesos(client):
         assert not re.search(r"\$\d", html), page
 
 
-def test_delete_pages(app, client):
+def test_deletes_happen_without_asking(app, client):
     token = csrf(client)
     lease_id = q(app, "SELECT id FROM leases WHERE status = 'active' LIMIT 1")[0]
     page = client.get(f"/leases/{lease_id}").get_data(as_text=True)
     assert "delete-payment" in page and "delete-charge" in page and f"/delete/lease/{lease_id}" in page
-    assert client.get("/delete/nonsense/1").status_code == 404
+    pid = q(app, "SELECT id FROM properties LIMIT 1")[0]
+    pages = page + client.get("/payments").get_data(as_text=True) + client.get(f"/properties/{pid}").get_data(as_text=True)
+    for form in re.findall(r"<form[^>]*>", pages):  # no "are you sure?" on any delete
+        if "delete" in form or "remove" in form:
+            assert "data-confirm" not in form, form
+    assert client.get(f"/delete/lease/{lease_id}").status_code == 405  # no confirmation page any more
+    assert client.post("/delete/nonsense/1", data={"csrf_token": token}).status_code == 404
     r = client.post(f"/delete/lease/{lease_id}", data={"csrf_token": token})
     assert r.status_code == 302 and "/properties/" in r.headers["Location"]
     assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lease_id}")[0] == 0

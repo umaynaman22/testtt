@@ -52,14 +52,15 @@
 <label class="field check"><input type="checkbox" name="{{ name }}" value="1" {{ 'checked' if checked }}><span>{{ label }}</span></label>
 {%- endmacro %}
 
-{% macro delete_button(action, message, label="Delete", next=None, cls="btn small danger") -%}
-<form method="post" action="{{ action }}" class="inline-form" data-confirm="{{ message }}">{{ csrf() }}
+{# Deletes happen straight away, without asking. #}
+{% macro delete_button(action, label="Delete", next=None, cls="btn small danger") -%}
+<form method="post" action="{{ action }}" class="inline-form">{{ csrf() }}
   {%- if next %}<input type="hidden" name="next" value="{{ next }}">{% endif -%}
   <button class="{{ cls }}">{{ label }}</button></form>
 {%- endmacro %}
 
 {% macro delete_link(kind, record_id, label="Delete") -%}
-<a class="btn danger" href="{{ url_for('main.delete_record', kind=kind, record_id=record_id) }}">{{ label }}</a>
+{{ delete_button(url_for('main.delete_record', kind=kind, record_id=record_id), label=label, cls="btn danger") }}
 {%- endmacro %}
 
 {% macro state_badge(r) -%}

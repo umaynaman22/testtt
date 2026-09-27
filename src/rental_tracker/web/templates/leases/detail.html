@@ -82,11 +82,9 @@
             <td class="actions keep"><div class="row-actions">
               {% if e.kind == 'payment' %}
                 <a class="btn small" href="{{ url_for('rentday.receipt', payment_id=e.id) }}">Receipt</a>
-                {{ m.delete_button(url_for('leases.delete_payment', lease_id=lease.id, payment_id=e.id), "Delete this payment?") }}
-              {% elif e.source == 'auto' and e.type == 'rent' %}
-                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id), "Delete this rent charge? It will be billed again with the current rent.") }}
+                {{ m.delete_button(url_for('leases.delete_payment', lease_id=lease.id, payment_id=e.id)) }}
               {% else %}
-                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id), "Delete this line?") }}
+                {{ m.delete_button(url_for('leases.delete_charge', lease_id=lease.id, charge_id=e.id)) }}
               {% endif %}
             </div></td>
           </tr>
@@ -102,7 +100,7 @@
       {% for t in people %}
         <p style="margin:0 0 8px"><strong>{{ t.first_name }} {{ t.last_name }}</strong>
           {% if t.phone %}<br><span class="small">{{ t.phone }}</span>{% endif %}
-          {% if people|length > 1 %}<br>{{ m.delete_button(url_for('leases.remove_person', lease_id=lease.id, tid=t.id), "Remove " ~ t.first_name ~ " from here?", label="remove", cls="btn link small") }}{% endif %}</p>
+          {% if people|length > 1 %}<br>{{ m.delete_button(url_for('leases.remove_person', lease_id=lease.id, tid=t.id), label="remove", cls="btn link small") }}{% endif %}</p>
       {% endfor %}
       <details class="section"><summary>Add another person</summary>
         <form method="post" action="{{ url_for('leases.add_person', lease_id=lease.id) }}">

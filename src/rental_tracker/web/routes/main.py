@@ -62,7 +62,7 @@ def search():
     return render_template("search.html", q=q, results=links)
 
 
-# Where to go after deleting, and where "Cancel" goes.
+# Where to go after deleting, and back to if it can't be deleted.
 AFTER_DELETE = {
     "property": lambda p: url_for("properties.index"),
     "unit": lambda p: url_for("properties.detail", pid=p.parent["property_id"]),  # old links
@@ -75,22 +75,21 @@ RECORD_PAGE = {
 }
 
 
-@bp.route("/delete/<kind>/<int:record_id>", methods=["GET", "POST"])
+@bp.route("/delete/<kind>/<int:record_id>", methods=["POST"])
 def delete_record(kind: str, record_id: int):
-    """Show exactly what a delete removes, then do it (after a safety backup)."""
+    """Delete straight away (no confirmation), after a safety backup."""
     if kind not in deletion.KINDS:
         abort(404)
     conn = db()
     p = deletion.preview(conn, kind, record_id)
-    if request.method == "POST":
-        try:
-            deletion.validate(p)
-            backup.create_backup(conn, state().data, "snapshots", f"before-delete-{kind}")
-            with dbmod.transaction(conn):
-                deletion.delete(conn, kind, record_id)
-            flash(f"Deleted {p.label}.", "ok")
-            return redirect(AFTER_DELETE[kind](p))
-        except (ValueError, OSError) as e:
-            flash(str(e), "error")
+    try:
+        deletion.validate(p)
+        backup.create_backup(conn, state().data, "snapshots", f"before-delete-{kind}")
+        with dbmod.transaction(conn):
+            deletion.delete(conn, kind, record_id)
+        flash(f"Deleted {p.label}.", "ok")
+        return redirect(AFTER_DELETE[kind](p))
+    except (ValueError, OSError) as e:
+        flash(str(e), "error")
     endpoint, arg = RECORD_PAGE[kind]
-    return render_template("delete.html", p=p, cancel_url=url_for(endpoint, **{arg: record_id}))
+    return redirect(url_for(endpoint, **{arg: record_id}))

@@ -21,7 +21,7 @@
     <td>{{ place(p.property_code, p.unit_label) }}</td>
     <td><a href="{{ url_for('leases.detail', lease_id=p.lease_id) }}">{{ p.tenants }}</a>{% if p.voided_at %}<div class="small keep">Voided: {{ p.void_reason }}</div>{% endif %}</td>
     <td>{{ p|pay_method }}</td><td class="num">{{ p.amount_cents|money }}</td>
-    <td class="actions keep">{{ m.delete_button(url_for('rentday.delete_payment', payment_id=p.id), "Delete this payment?", next=request.full_path) }}</td></tr>{% endfor %}</tbody>
+    <td class="actions keep">{{ m.delete_button(url_for('rentday.delete_payment', payment_id=p.id), next=request.full_path) }}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% else %}<div class="card empty">No payments in this range.</div>{% endif %}
 {% endblock %}
