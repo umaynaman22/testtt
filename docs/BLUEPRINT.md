@@ -104,7 +104,7 @@ A small desktop wrapper (**pywebview**) opens the app in a native window, so it 
 | Database | SQLite 3 via Python's built-in `sqlite3` | WAL mode, foreign keys on, FTS5 for search. Plain SQL keeps the schema and the code in one language |
 | Migrations | Numbered SQL files + `PRAGMA user_version` | Every schema change is versioned, runs in one transaction, and a backup is taken before migrating |
 | PDFs | Printable pages + the browser's "Save as PDF" | Receipts and statements print cleanly with any characters in names. fpdf2 is planned for one-click batch letters |
-| Excel/CSV | `csv` module | Import and export CSV, which Excel opens directly. `.xlsx` export (openpyxl) is planned |
+| Excel | openpyxl | `.xlsx` downloads with real numbers (pesos) and dates, so Excel can sort, filter and total them |
 | Bank import | `ofxparse` + CSV | Most banks let you download OFX/QFX or CSV files |
 | Passwords | argon2-cffi | Only if the password lock or multi-user mode is turned on |
 | Desktop window | pywebview | Uses the operating system's built-in web view (Edge WebView2 on Windows, WebKit on macOS) |
@@ -692,7 +692,8 @@ At the owner's request the app was **simplified to the essentials**: add a unit,
 - **Rent changes:** the rent on the Edit page is the rent from the next bill on. Past bills stay as they were; the tenant page shows "₱X from <date>" while a change is scheduled, and typing the current rent back cancels it.
 - **Payment methods:** cash, check, bank transfer, GCash, or Other, where you type the method (e.g. "Maya"). Money is shown in Philippine pesos (₱). Migration 0003 rebuilds the payments table to allow these.
 - **Late:** who is behind, by how many days and how much; optional late fees that you charge or skip.
-- **Reports:** rent roll, who owes money, monthly collections. All printable and exportable to CSV.
+- **Reports:** rent roll, who owes money, monthly collections. All printable and exportable to Excel.
+- **Excel export:** an "Export to Excel" button on Tenants, Payments, each report, the tenant page and the statement, and "Export everything to Excel" on Reports (one workbook with Units, Tenants, Payments and History sheets). Amounts are numbers formatted as ₱ and dates are real dates; text is always stored as text so a name starting with "=" can't become a formula (`services/excel.py`).
 - **Settings:** your name for receipts, default late fee and grace days, when to bill rent, proration method.
 - **Delete:** on everything, straight away with no confirmation (at the owner's request). A backup is saved automatically before a unit, tenant or tenancy is deleted, and every deleted row is copied to the audit log. Deleting an automatic line (a month's rent, a late fee) keeps a hidden "deleted" row so it isn't billed or suggested again; lines you added yourself are removed outright.
 

@@ -1,8 +1,6 @@
-"""Reports (BLUEPRINT §10). Each returns a Report that the UI renders and exports to CSV."""
+"""Reports (BLUEPRINT §10). Each returns a Report that the UI renders and exports to Excel."""
 from __future__ import annotations
 
-import csv
-import io
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date
@@ -11,7 +9,7 @@ from typing import Any
 from ..domain.allocation import BUCKETS, aging
 from ..domain.periods import period_end, period_start
 from . import ledger
-from .common import csv_row
+from .excel import Sheet
 
 
 @dataclass(frozen=True)
@@ -32,22 +30,10 @@ class Report:
     totals: dict[str, Any] | None = None
     notes: list[str] = field(default_factory=list)
 
-    def to_csv(self) -> str:
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow([c.label for c in self.columns])
-        for row in self.rows + ([self.totals] if self.totals else []):
-            w.writerow(csv_row([_csv_value(row.get(c.key), c.kind) for c in self.columns]))
-        return buf.getvalue()
-
-
-def _csv_value(v: Any, kind: str) -> Any:
-    if v is None:
-        return ""
-    if kind == "money":
-        sign = "-" if v < 0 else ""
-        return f"{sign}{abs(v) // 100}.{abs(v) % 100:02d}"
-    return v
+    def to_sheet(self) -> Sheet:
+        return Sheet(self.title, [(c.label, c.kind) for c in self.columns],
+                     [[row.get(c.key) for c in self.columns] for row in self.rows],
+                     [self.totals.get(c.key) for c in self.columns] if self.totals else None)
 
 
 def _in(col: str, ids: list[int] | None) -> tuple[str, list[int]]:

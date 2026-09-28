@@ -4,7 +4,7 @@
 {% block content %}
 {% call m.page_head(rep.title, rep.subtitle, crumbs='<a href="' ~ url_for('reports.index') ~ '">Reports</a>') %}
   <button class="btn" data-print>Print</button>
-  <a class="btn" href="{{ url_with(format='csv') }}">Export CSV</a>
+  <a class="btn" href="{{ url_with(format='xlsx') }}">Export to Excel</a>
 {% endcall %}
 <form class="filters" method="get">
   <label class="field"><span>Unit</span><select name="property"><option value="">All</option>{% for v, t in props %}<option value="{{ v }}" {{ 'selected' if request.args.get('property') == v|string }}>{{ t }}</option>{% endfor %}</select></label>

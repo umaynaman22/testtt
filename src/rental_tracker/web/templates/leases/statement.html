@@ -3,9 +3,10 @@
 {% block title %}Statement{% endblock %}
 {% block content %}
 <div class="actions no-print" style="margin:0 0 14px">
-  <a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">← Back</a>
+  <a class="btn" href="{{ url_for('leases.detail', lease_id=lease.id) }}">Tenant page</a>
   <form method="get" style="display:inline-flex;gap:6px;align-items:center"><label class="small">From <input type="date" name="start" value="{{ start }}"></label><button class="btn small">Apply</button></form>
   <button class="btn primary" data-print>Print / Save as PDF</button>
+  <a class="btn" href="{{ url_with(format='xlsx') }}">Export to Excel</a>
 </div>
 <article class="doc">
   <div class="doc-head">

@@ -1,19 +1,16 @@
 """Collect rent (batch entry), who is late, the payments list and receipts."""
 from __future__ import annotations
 
-import csv
-import io
-
-from flask import Blueprint, Response, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from ... import db as dbmod
 from ...domain.money import format_money
 from ...domain.periods import add_periods, parse_period, period_end, period_start
-from ...services import deletion, late_fees, ledger, portfolio, rent_posting, rentday, tenants
-from ...services.common import csv_row, get_setting
+from ...services import deletion, excel, late_fees, ledger, portfolio, rent_posting, rentday, tenants
+from ...services.common import get_setting
 from .. import attempt, db, today
 from ..forms import Form, record_id
-from . import current_period, options, safe_next
+from . import current_period, excel_download, options, safe_next
 
 bp = Blueprint("rentday", __name__)
 METHODS = options(ledger.PAYMENT_METHODS, ledger.METHOD_LABELS)
@@ -56,7 +53,7 @@ def pay():
     try:
         with dbmod.transaction(db()):
             amount = f.money("amount", "Amount")
-            when = f.date("received_date", "Date")
+            when = f.date("received_date", "Date") or today().isoformat()
             method = f.raw("method") or None
             f.check()
             current = rentday.rows(db(), period, lease_id=lease_id)
@@ -114,17 +111,9 @@ def payments():
     pid = record_id(request.args.get("property"))
     rows = ledger.list_payments(db(), start=start, end=end, method=request.args.get("method") or None,
                                 property_ids=[pid] if pid else None, limit=5000)
-    if request.args.get("format") == "csv":
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow(["date", "receipt", "unit", "tenants", "method", "amount", "voided", "void_reason"])
-        for r in rows:
-            w.writerow(csv_row([r["received_date"], r["receipt_number"], r["property_code"],
-                                r["tenants"], ledger.method_name(r["method"], r["method_other"]),
-                                f"{r['amount_cents'] / 100:.2f}",
-                                "yes" if r["voided_at"] else "", r["void_reason"] or ""]))
-        return Response(buf.getvalue(), mimetype="text/csv",
-                        headers={"Content-Disposition": f"attachment; filename=payments-{start}-to-{end}.csv"})
+    if request.args.get("format") == "xlsx":
+        return excel_download(excel.workbook(excel.payments_sheet(rows, ledger.method_name)),
+                              f"payments-{start}-to-{end}")
     total = sum(r["amount_cents"] for r in rows if not r["voided_at"])
     props = [(p["id"], p["code"]) for p in portfolio.list_properties(db(), status="all")]
     return render_template("rentday/payments.html", rows=rows, total=total, start=start, end=end,

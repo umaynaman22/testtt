@@ -8,7 +8,7 @@ A simple rental tracker that runs **entirely on your own computer, with no inter
 - All amounts are in **Philippine pesos (₱)**.
 - **Add debt** for anything a tenant owes besides rent.
 - See **balances**, **who's late** and by how many days, and each tenant's full **payment history**.
-- Print receipts and statements, and export lists for Excel.
+- Print receipts and statements, and export to Excel (.xlsx): the tenant list, payments, each report, a tenant's payment history, or everything at once.
 
 | Document | What's in it |
 |---|---|

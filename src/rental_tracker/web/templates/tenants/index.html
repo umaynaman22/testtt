@@ -3,7 +3,7 @@
 {% block title %}Tenants{% endblock %}
 {% block content %}
 {% call m.page_head("Tenants", rows|length ~ " shown · " ~ (owed|money) ~ " owed") %}
-  <a class="btn" href="{{ url_with(format='csv') }}">Export</a>
+  <a class="btn" href="{{ url_with(format='xlsx') }}">Export to Excel</a>
   <a class="btn primary" href="{{ url_for('leases.new') }}">Add tenant</a>
 {% endcall %}
 <form class="filters" method="get">

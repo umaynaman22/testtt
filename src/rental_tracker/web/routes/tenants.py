@@ -1,17 +1,12 @@
 """Tenants: the list, and people who aren't linked to a unit yet."""
 from __future__ import annotations
 
-import csv
-import io
+from flask import Blueprint, redirect, render_template, request, url_for
 
-from flask import Blueprint, Response, redirect, render_template, request, url_for
-
-from ...domain.money import cents_to_input
-from ...services import tenants
-from ...services.common import csv_row
+from ...services import excel, tenants
 from .. import attempt, db, today
 from ..forms import Form, values_from
-from . import safe_next
+from . import excel_download, safe_next
 
 bp = Blueprint("tenants", __name__)
 
@@ -24,17 +19,8 @@ def person_fields(f: Form) -> dict:
 @bp.route("/tenants")
 def index():
     rows = tenants.tenancies(db(), today=today(), status="all", q=request.args.get("q", ""))
-    if request.args.get("format") == "csv":
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow(["tenant", "unit", "phone", "rent", "balance", "overdue", "days late", "last paid"])
-        for r in rows:
-            w.writerow(csv_row([r["names"], r["property_code"] or "", r["phone"] or "",
-                                cents_to_input(r["current_rent_cents"]),
-                                cents_to_input(r["balance_cents"]), cents_to_input(r["past_due_cents"]),
-                                r["days_late"] or "", r["last_paid_on"] or ""]))
-        return Response(buf.getvalue(), mimetype="text/csv",
-                        headers={"Content-Disposition": "attachment; filename=tenants.csv"})
+    if request.args.get("format") == "xlsx":
+        return excel_download(excel.workbook(excel.tenants_sheet(rows)), f"tenants-{today().isoformat()}")
     return render_template("tenants/index.html", rows=rows,
                            owed=sum(max(r["balance_cents"], 0) for r in rows))
 

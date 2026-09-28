@@ -7,6 +7,7 @@
       crumbs='<a href="' ~ url_for('tenants.index') ~ '">Tenants</a> / <a href="' ~ url_for('properties.detail', pid=lease.property_id) ~ '">' ~ (lease.property_code|e) ~ '</a>') %}
   <a class="btn" href="{{ url_for('leases.edit', lease_id=lease.id) }}">Edit</a>
   <a class="btn" href="{{ url_for('leases.statement', lease_id=lease.id) }}">Print statement</a>
+  <a class="btn" href="{{ url_for('leases.statement', lease_id=lease.id, format='xlsx') }}">Export to Excel</a>
   {{ m.delete_link('lease', lease.id) }}
 {% endcall %}
 {% if lease.status in ['ended', 'terminated'] %}<div class="flash info">Moved out {{ lease.move_out_date|fdate }}.</div>

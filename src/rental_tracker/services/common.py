@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 from datetime import date, datetime, timezone
 from typing import Any
@@ -59,20 +58,6 @@ def ensure_open(conn: sqlite3.Connection, when: date | str) -> None:
         raise LockedPeriodError(
             f"The books are locked through {lock.isoformat()}. Post an adjustment dated after "
             "that instead, or change the lock date in Settings.")
-
-
-_NUMBER_RE = re.compile(r"-?\d+(\.\d+)?")
-
-
-def csv_safe(value: Any) -> Any:
-    """Stop spreadsheet apps treating imported text like '=HYPERLINK(...)' as a formula."""
-    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r") and not _NUMBER_RE.fullmatch(value):
-        return "'" + value
-    return value
-
-
-def csv_row(values: list[Any]) -> list[Any]:
-    return [csv_safe(v) for v in values]
 
 
 def diff(old: sqlite3.Row | dict | None, new: dict[str, Any]) -> dict[str, list[Any]]:

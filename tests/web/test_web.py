@@ -1,3 +1,4 @@
+import io
 import re
 import time
 from datetime import date
@@ -62,12 +63,12 @@ def test_every_page_renders(app, client):
                                   for t in ("properties", "units", "leases", "tenants", "payments"))
     pages = ["/", "/properties", "/properties?sort=balance", "/properties/new", f"/properties/{pid}",
              f"/properties/{pid}/edit", "/tenants", "/tenants?q=lee",
-             "/tenants?format=csv", "/tenants/new", f"/tenants/new?unit_id={unit}", f"/tenants/{tid}",
+             "/tenants?format=xlsx", "/tenants/new", f"/tenants/new?unit_id={unit}", f"/tenants/{tid}",
              f"/tenants/{tid}/edit", "/rent-day", "/rent-day?period=2026-08&show=unpaid", "/late", "/payments",
-             "/payments?format=csv", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=rizal",
+             "/payments?format=xlsx", "/reports/everything.xlsx", f"/payments/{pay}/receipt", "/reports", "/settings", "/search?q=rizal",
              "/search?q=zzzz"]
     for key in ("rent-roll", "aging", "collections"):
-        pages += [f"/reports/{key}", f"/reports/{key}?format=csv", f"/reports/{key}?property={pid}"]
+        pages += [f"/reports/{key}", f"/reports/{key}?format=xlsx", f"/reports/{key}?property={pid}"]
     for lid in q(app, "SELECT id FROM leases"):
         pages += [f"/leases/{lid}", f"/leases/{lid}/edit", f"/leases/{lid}/statement"]
     for page in pages:
@@ -471,7 +472,7 @@ def test_payment_methods_and_no_ref(app, client):
     assert "Payment — Maya wallet" in client.get(f"/leases/{lid}").get_data(as_text=True)
     listing = client.get("/payments").get_data(as_text=True)
     assert "Maya wallet" in listing and "GCash" in listing and "<th>Ref</th>" not in listing
-    assert "Maya wallet" in client.get("/payments?format=csv").get_data(as_text=True)
+    assert "Maya wallet" in [c.value for c in sheet(client.get("/payments?format=xlsx"))["E"]]
     grid = client.get("/rent-day").get_data(as_text=True)
     assert "<th>Ref</th>" not in grid and 'name="reference"' not in grid
     r = client.post("/rent-day/pay", data={"lease_id": lid, "amount": "50", "method": "other", "method_other": "Coins.ph",
@@ -526,10 +527,59 @@ def test_delete_single_entries(app, client):
     assert q(app, "SELECT COUNT(*) FROM audit_log WHERE action = 'delete'")[0] >= 2
 
 
-def test_security_headers_and_csv_safety(client):
+def test_security_headers(client):
     resp = client.get("/")
     assert "script-src 'self'" in resp.headers["Content-Security-Policy"]
     assert resp.headers["X-Frame-Options"] == "DENY"
-    from rental_tracker.services.common import csv_safe
-    assert csv_safe("=HYPERLINK(\"x\")") == "'=HYPERLINK(\"x\")"
-    assert csv_safe("-12.50") == "-12.50" and csv_safe("Ann") == "Ann"
+
+
+def sheet(resp, name=None):
+    """Open an Excel download from the app."""
+    from openpyxl import load_workbook
+    assert resp.status_code == 200 and resp.mimetype.endswith("spreadsheetml.sheet"), resp.status_code
+    disposition = resp.headers["Content-Disposition"]
+    assert disposition.startswith('attachment; filename="') and disposition.endswith('.xlsx"'), disposition
+    wb = load_workbook(io.BytesIO(resp.data))
+    return wb[name] if name else wb.active
+
+
+def test_excel_exports(app, client):
+    from datetime import datetime
+    from decimal import Decimal
+    from openpyxl import load_workbook
+    token = csrf(client)
+    # tenants: real numbers shown as pesos, real dates, a header row
+    ws = sheet(client.get("/tenants?format=xlsx"))
+    assert [c.value for c in ws[1]] == ["Tenant", "Unit", "Phone", "Rent", "Balance", "Overdue", "Days late",
+                                        "Last paid", "Status"]
+    assert ws.freeze_panes == "A2" and ws.auto_filter.ref
+    rent = ws["D2"]
+    assert isinstance(rent.value, (int, float, Decimal)) and "₱" in rent.number_format
+    assert any(isinstance(c.value, datetime) for c in ws["H"][1:])
+    assert ws.max_row - 1 == len(client.get("/tenants").get_data(as_text=True).split("<tbody>")[1].split("</tbody>")[0]
+                                 .split("<tr>")) - 1
+    # payments: a total row that adds up
+    ws = sheet(client.get("/payments?format=xlsx&start=2026-01-01&end=2026-12-31"))
+    amounts = [c.value for c in ws["F"][1:-1]]
+    assert ws.cell(ws.max_row, 1).value == "Total" and ws.cell(ws.max_row, 6).value == sum(amounts)
+    # reports keep their columns and totals
+    ws = sheet(client.get("/reports/rent-roll?format=xlsx"))
+    assert ws["A1"].value == "Unit" and ws.cell(ws.max_row, 1).value == "Total"
+    # one tenant's payment history, oldest first, with the running balance
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' LIMIT 1")[0]
+    assert "Export to Excel" in client.get(f"/leases/{lid}").get_data(as_text=True)
+    ws = sheet(client.get(f"/leases/{lid}/statement?format=xlsx"))
+    assert [c.value for c in ws[1]] == ["Date", "What", "Charged", "Paid", "Balance"]
+    balance = q(app, f"SELECT balance_cents FROM v_lease_balances WHERE lease_id = {lid}")[0]
+    assert ws.cell(ws.max_row, 5).value * 100 == balance
+    # everything in one workbook
+    wb = load_workbook(io.BytesIO(client.get("/reports/everything.xlsx").data))
+    assert wb.sheetnames == ["Units", "Tenants", "Payments", "History"]
+    assert wb["Units"].max_row - 1 == q(app, "SELECT COUNT(*) FROM properties")[0]
+    assert wb["Payments"].max_row - 2 == q(app, "SELECT COUNT(*) FROM payments")[0]
+    assert "Export everything to Excel" in client.get("/reports").get_data(as_text=True)
+    # text is never turned into a formula
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "name": "=1+2"})
+    ws = sheet(client.get("/tenants?format=xlsx"))
+    cell = next(c for c in ws["A"] if str(c.value).startswith("=1+2"))
+    assert cell.data_type == "s"

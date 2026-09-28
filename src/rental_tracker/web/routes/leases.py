@@ -12,11 +12,11 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from ...domain.money import cents_to_input, format_money
 from ...domain.periods import due_date, parse_date, period_of, period_start
 from ...domain.rent import rent_in_effect
-from ...services import deletion, leases, ledger, portfolio, rent_posting, tenants
+from ...services import deletion, excel, leases, ledger, portfolio, rent_posting, tenants
 from ...services.common import get_int_setting, get_setting
 from .. import attempt, db, today
 from ..forms import Form, record_id
-from . import options
+from . import excel_download, options
 from .tenants import person_fields
 
 bp = Blueprint("leases", __name__)
@@ -144,7 +144,7 @@ def payment(lease_id: int):
     f = Form(request.form)
     with attempt("Payment saved") as r:
         amount = f.money("amount", "Amount")
-        when = f.date("received_date", "Date")
+        when = f.date("received_date", "Date") or today().isoformat()
         f.check()
         r["id"] = ledger.record_payment(db(), lease_id, amount, when, f.raw("method") or None,
                                         notes=f.str("notes"), method_other=f.str("method_other"))
@@ -218,7 +218,7 @@ def debt(lease_id: int):
     f = Form(request.form)
     with attempt("Debt added"):
         amount = f.money("amount", "Amount")
-        when = f.date("date", "Date")
+        when = f.date("date", "Date") or today().isoformat()
         f.check()
         if not amount:
             raise ValueError("Enter how much they owe")
@@ -343,6 +343,10 @@ def statement(lease_id: int):
         before = [e for e in entries if e["date"] < start]
         opening = before[-1]["balance"] if before else 0
         entries = [e for e in entries if e["date"] >= start]
+    if request.args.get("format") == "xlsx":
+        names = leases.tenant_names(conn, lease_id) or "Tenant"
+        return excel_download(excel.workbook(excel.history_sheet(names, entries)),
+                              f"payment-history-{names}-{today().isoformat()}")
     return render_template("leases/statement.html", lease=lease, entries=entries,
                            opening=opening, start=start, names=leases.tenant_names(conn, lease_id),
                            summary=ledger.lease_summary(conn, lease_id, today()),

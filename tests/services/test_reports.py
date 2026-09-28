@@ -79,6 +79,6 @@ def test_reports_and_dashboard(conn, owner_id):
     assert {r["property_code"] for r in reports.aging_report(conn, TODAY).rows} == {"A", "B"}
     coll = reports.collections(conn, "2026-03")
     assert coll.totals["billed_cents"] == 200000 and coll.totals["paid_cents"] == 50000
-    assert "A" in coll.to_csv()
+    assert coll.to_sheet().rows[0][0] == "A" and coll.to_sheet().totals[0] == "Total"
     d = dashboard.build(conn, TODAY)
     assert len(d["late"]) == 2 and d["owed"] == 350000 and "vacant" not in d

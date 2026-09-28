@@ -3,7 +3,7 @@
 {% block title %}Payments{% endblock %}
 {% block content %}
 {% call m.page_head("Payment history", rows|length ~ " payments · " ~ (total|money) ~ " received") %}
-  <a class="btn" href="{{ url_with(format='csv') }}">Export CSV</a>
+  <a class="btn" href="{{ url_with(format='xlsx') }}">Export to Excel</a>
 {% endcall %}
 <form class="filters" method="get">
   <label class="field"><span>From</span><input type="date" name="start" value="{{ start }}"></label>

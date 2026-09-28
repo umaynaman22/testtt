@@ -93,6 +93,10 @@ def self_test(report: Path | None) -> int:
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE VIRTUAL TABLE t USING fts5(x)")
         lines.append(f"sqlite {sqlite3.sqlite_version} fts5 ok; files ok; flask app {web.__name__} ok")
+        from .services import excel
+        if not excel.workbook(excel.Sheet("Test", [("Amount", "money")], [[12345]])).startswith(b"PK"):
+            raise RuntimeError("could not write an Excel file")
+        lines.append("excel export ok")
         import importlib
         importlib.import_module("webview")
         lines.append("pywebview ok")
@@ -203,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
                   "WebView2 Runtime. Use 'Quit' in the sidebar to close Rental Tracker.", error=False)
             _serve_in_browser(server, url, thread)
             return 0
-        webview.settings["ALLOW_DOWNLOADS"] = True                   # CSV exports and templates
+        webview.settings["ALLOW_DOWNLOADS"] = True                   # Excel exports
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False   # keep receipts/documents in the app
         width, height, maximized = 1360, 880, False
         try:  # on smaller screens (e.g. 1366x768 laptops) fill the screen instead of spilling off it
