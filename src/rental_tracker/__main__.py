@@ -13,6 +13,7 @@ import logging
 import os
 import secrets
 import socket
+import sqlite3
 import sys
 import threading
 import webbrowser
@@ -73,7 +74,10 @@ def prepare(data: DataDir) -> None:
         result = startup.run_catch_up(conn, datetime.now().date())
         if result.summary():
             log.info("catch-up: %s", result.summary())
-        backup.run_scheduled_backups(conn, data)
+        try:
+            backup.run_scheduled_backups(conn, data)
+        except (OSError, sqlite3.Error) as e:  # e.g. disk or backup drive full; the app still works
+            log.error("scheduled backup failed: %s", e)
     finally:
         conn.close()
 
@@ -82,8 +86,6 @@ def self_test(report: Path | None) -> int:
     """Check that everything the app needs is present (used by the Windows build pipeline)."""
     lines, ok = [f"Rental Tracker {__version__}", f"python {sys.version.split()[0]} frozen={FROZEN}"], True
     try:
-        import sqlite3
-
         from . import web
         pkg = Path(__file__).parent
         for rel in ("db/migrations/0001_initial.sql", "web/templates/base.html", "web/static/app.css",

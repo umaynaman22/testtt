@@ -583,3 +583,81 @@ def test_excel_exports(app, client):
     ws = sheet(client.get("/tenants?format=xlsx"))
     cell = next(c for c in ws["A"] if str(c.value).startswith("=1+2"))
     assert cell.data_type == "s"
+
+
+def test_second_review_fixes(app, client):
+    """Bugs found in the second code review stay fixed."""
+    token = csrf(client)
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' AND rent_due_day = 1 LIMIT 1")[0]
+    tid = q(app, f"SELECT tenant_id FROM lease_tenants WHERE lease_id = {lid} AND role = 'primary'")[0]
+    payments = lambda: q(app, "SELECT COUNT(*) FROM payments")[0]
+    # Collect rent: a blank amount is a message, not a crash
+    before = payments()
+    r = client.post("/rent-day/pay", data={"csrf_token": token, "lease_id": lid, "amount": ""},
+                    headers={"HX-Request": "true"})
+    assert r.status_code == 200 and "row-error" in r.get_data(as_text=True) and payments() == before
+    # odd characters where an id belongs
+    assert client.get("/tenants/new?unit_id=%C2%B2").status_code == 200
+    # the Notes box on the Edit page is the tenancy's; the person's own notes and key are kept
+    conn = dbmod.connect(app.extensions["rental_tracker"].data.db)
+    conn.execute("UPDATE tenants SET notes = 'has a dog', external_ref = 'K-1' WHERE id = ?", (tid,))
+    conn.close()
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "name": "Rosa Reyes", "notes": "lease note"})
+    assert q(app, f"SELECT notes FROM leases WHERE id = {lid}") == ["lease note"]
+    assert q(app, f"SELECT notes || external_ref FROM tenants WHERE id = {tid}") == ["has a dogK-1"]
+    client.post(f"/tenants/{tid}/edit", data={"csrf_token": token, "name": "Rosa Reyes"})
+    assert q(app, f"SELECT external_ref FROM tenants WHERE id = {tid}") == ["K-1"]
+    # a negative late fee is a plain message; nothing is saved and no "done" message shows
+    rent = q(app, f"SELECT current_rent_cents FROM v_lease_current_rent WHERE lease_id = {lid}")[0]
+    r = client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "rent": str(rent // 100 + 500),
+                                                 "late_fee": "-50"}, follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert "The late fee can&#39;t be negative" in page and "conflicts" not in page and "new rent starts" not in page
+    assert q(app, f"SELECT COUNT(*) FROM lease_rent_changes WHERE lease_id = {lid}") == [0]
+    r = client.post("/settings", data={"csrf_token": token, "default_late_fee_cents": "-50"}, follow_redirects=True)
+    assert "Late fee for new tenants can&#39;t be negative" in r.get_data(as_text=True)
+    assert q(app, "SELECT value FROM settings WHERE key = 'default_late_fee_cents'") != ["-5000"]
+
+
+def test_statement_excel_from_a_date_adds_up(app, client):
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' LIMIT 1")[0]
+    ws = sheet(client.get(f"/leases/{lid}/statement?start=2026-06-01&format=xlsx"))
+    assert ws["B2"].value == "Balance forward"
+    balance = ws["E2"].value
+    for row in ws.iter_rows(min_row=3, values_only=True):
+        balance += (row[2] or 0) - (row[3] or 0)
+        assert row[4] == balance
+
+
+def test_changing_move_in_keeps_deleted_months_deleted(app, client):
+    token = csrf(client)
+    pid = client.post("/properties/new", data={"csrf_token": token, "name": "3 Mabini St"}).headers["Location"].split("/")[-1]
+    unit = q(app, f"SELECT id FROM units WHERE property_id = {pid}")[0]
+    lid = client.post("/tenants/new", data={"csrf_token": token, "unit_id": unit, "name": "Lito Ramos", "rent": "8000",
+                                            "moved_in": "2026-01-01"}).headers["Location"].split("/")[-1]
+    april = q(app, f"SELECT id FROM charges WHERE lease_id = {lid} AND period = '2026-04' AND charge_type = 'rent'")[0]
+    client.post(f"/leases/{lid}/delete-charge/{april}", data={"csrf_token": token})
+    live = lambda: q(app, f"SELECT period FROM charges WHERE lease_id = {lid} AND charge_type = 'rent' "
+                          "AND voided_at IS NULL ORDER BY period")
+    assert "2026-04" not in live()
+    client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "moved_in": "2026-01-02"})
+    assert "2026-04" not in live() and live()[0] == "2026-01" and len(live()) == 8
+
+
+def test_rent_change_starts_after_bills_made_early(app, client):
+    """With rent billed days ahead, a new rent starts with the first bill not made yet."""
+    from rental_tracker.services import rent_posting
+    from rental_tracker.services.common import set_setting
+    token = csrf(client)
+    lid = q(app, "SELECT id FROM leases WHERE status = 'active' AND rent_due_day = 1 LIMIT 1")[0]
+    conn = dbmod.connect(app.extensions["rental_tracker"].data.db)
+    set_setting(conn, "rent_post_days_before_due", "10")
+    rent_posting.post_rent(conn, TODAY)  # October's bill (due Oct 1) is made on Sep 27
+    conn.close()
+    assert q(app, f"SELECT COUNT(*) FROM charges WHERE lease_id = {lid} AND period = '2026-10'") == [1]
+    rent = q(app, f"SELECT current_rent_cents FROM v_lease_current_rent WHERE lease_id = {lid}")[0]
+    r = client.post(f"/leases/{lid}/edit", data={"csrf_token": token, "rent": str(rent // 100 + 1000)},
+                    follow_redirects=True)
+    assert "The new rent starts with the bill due 2026-11-01" in r.get_data(as_text=True)
+    assert q(app, f"SELECT effective_date FROM lease_rent_changes WHERE lease_id = {lid}") == ["2026-11-01"]
+    assert "from Nov 1, 2026" in client.get(f"/leases/{lid}").get_data(as_text=True)

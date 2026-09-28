@@ -136,12 +136,16 @@ def payments_sheet(rows: list, method_name) -> Sheet:
     return Sheet("Payments", columns, out, ["Total", None, None, None, None, total] + ([None] if voided else []))
 
 
-def history_sheet(title: str, entries: list[dict]) -> Sheet:
-    """A tenant's payment history, oldest first, with the running balance."""
+def history_sheet(title: str, entries: list[dict], start: str = "", opening: int = 0) -> Sheet:
+    """A tenant's payment history, oldest first, with the running balance.
+
+    From a start date, the first line is the balance carried forward from before it.
+    """
+    rows = [[start, "Balance forward", None, None, opening]] if start else []
+    rows += [[e["date"], e["description"], e["charge"] or None, e["credit"] or None, e["balance"]]
+             for e in entries]
     return Sheet(title, [("Date", "date"), ("What", "text"), ("Charged", "money"), ("Paid", "money"),
-                         ("Balance", "money")],
-                 [[e["date"], e["description"], e["charge"] or None, e["credit"] or None, e["balance"]]
-                  for e in entries])
+                         ("Balance", "money")], rows)
 
 
 def everything(conn: sqlite3.Connection, today: date) -> bytes:

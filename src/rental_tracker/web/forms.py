@@ -13,7 +13,7 @@ from ..services.common import ServiceError
 def record_id(value: str | None) -> int | None:
     """A database id typed or passed in a link; None unless it's a plain, sensible number."""
     v = (value or "").strip()
-    return int(v) if v.isdigit() and len(v) <= 18 else None
+    return int(v) if v.isascii() and v.isdigit() and len(v) <= 18 else None
 
 
 class Form:

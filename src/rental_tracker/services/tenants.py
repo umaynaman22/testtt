@@ -28,8 +28,8 @@ def save_tenant(conn: sqlite3.Connection, tid: int | None, fields: dict[str, Any
                            (fields["external_ref"], tid)).fetchone()
         if dup:
             raise ServiceError(f"Tenant key {fields['external_ref']!r} is already used by tenant #{dup[0]}")
-    else:
-        fields["external_ref"] = None
+    elif "external_ref" in fields:
+        fields["external_ref"] = None  # blank = none; not given = leave as is
     data = {k: fields.get(k) for k in FIELDS if k in fields}
     if tid is None:
         cur = conn.execute(f"INSERT INTO tenants ({', '.join(data)}) VALUES ({', '.join('?' * len(data))})",

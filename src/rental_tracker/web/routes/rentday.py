@@ -57,7 +57,7 @@ def pay():
             method = f.raw("method") or None
             f.check()
             current = rentday.rows(db(), period, lease_id=lease_id)
-            if current:
+            if current and amount is not None:  # blank amount: record_payment says what's missing
                 # Quick entry makes typos easy; a huge amount is almost always a slip of the finger.
                 limit = 3 * max(current[0]["balance_cents"], current[0]["current_rent_cents"] or 0, 1)
                 if amount > limit:
@@ -69,8 +69,10 @@ def pay():
         error = str(e)
     if not request.headers.get("HX-Request"):
         return redirect(url_for("rentday.index", period=period))
-    row = rentday.rows(db(), period, lease_id=lease_id)[0]
-    return render_template("rentday/_row.html", r=row, period=period, saved=saved, error=error,
+    rows = rentday.rows(db(), period, lease_id=lease_id)
+    if not rows:  # the tenant was deleted in another window: drop their row
+        return ""
+    return render_template("rentday/_row.html", r=rows[0], period=period, saved=saved, error=error,
                            methods=METHODS, pay_date=f.raw("received_date"),
                            method=f.raw("method"), method_other=f.raw("method_other"))
 

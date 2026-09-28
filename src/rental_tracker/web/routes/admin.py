@@ -38,7 +38,10 @@ def settings():
                     v = f.int(key, label, lo=0, hi=365)
                     new[key] = str(v) if v is not None else DEFAULTS.get(key, "0")
                 elif kind == "money":
-                    new[key] = str(f.money(key, label) or 0)
+                    v = f.money(key, label) or 0
+                    if v < 0:
+                        raise ValueError(f"{label} can't be negative")
+                    new[key] = str(v)
                 elif kind == "choice":
                     v = f.raw(key)
                     new[key] = v if v in {o for o, _ in extra} else DEFAULTS[key]

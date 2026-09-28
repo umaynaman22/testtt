@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from ...domain.money import cents_to_input, format_money
-from ...domain.periods import due_date, parse_date, period_of, period_start
+from ...domain.periods import due_date, next_period, parse_date, period_of, period_start
 from ...domain.rent import rent_in_effect
 from ...services import deletion, excel, leases, ledger, portfolio, rent_posting, tenants
 from ...services.common import get_int_setting, get_setting
@@ -43,10 +43,21 @@ def _moved_in(lease) -> str:
     return lease["move_in_date"] or lease["start_date"]
 
 
-def _next_due(lease) -> date:
+def _next_due(conn, lease) -> date:
+    """Due date of the next rent bill not made yet; a rent typed on the Edit page starts with it.
+
+    Usually the next due date, but with "Bill rent this many days before it's due" that bill may
+    already be made, and made bills keep their amount.
+    """
     t = today()
-    due = due_date(period_of(t), lease["rent_due_day"])
-    return due if due > t else due_date(period_of(due + timedelta(days=31)), lease["rent_due_day"])
+    period = period_of(t)
+    if due_date(period, lease["rent_due_day"]) <= t:
+        period = next_period(period)
+    last = conn.execute("SELECT MAX(period) FROM charges WHERE lease_id = ? AND source = 'auto' "
+                        "AND charge_type = 'rent'", (lease["id"],)).fetchone()[0]
+    if last and last >= period:
+        period = next_period(last)
+    return due_date(period, lease["rent_due_day"])
 
 
 def _rent_on(conn, lease, on: date) -> int:
@@ -123,7 +134,7 @@ def detail(lease_id: int):
     billed_from = lease["billing_start_date"]
     unbilled = billed_from if (billed_from and billed_from > _moved_in(lease)
                                and lease["status"] in ("active", "month_to_month")) else None
-    eff = _next_due(lease)
+    eff = _next_due(conn, lease)
     next_rent = _rent_on(conn, lease, eff)
     rent_change = (next_rent, eff) if next_rent != lease["current_rent_cents"] else None
     return render_template(
@@ -260,12 +271,13 @@ def edit(lease_id: int):
     main = leases.lease_tenants(conn, lease_id)[:1]
     if request.method == "POST":
         f = Form(request.form)
+        notes: list[str] = []
         with attempt("Saved") as r:
             rent = f.money("rent", "Rent")
             fields = {"rent_due_day": f.int("rent_due_day", "Rent due day", lo=1, hi=28) or lease["rent_due_day"],
                       "notes": f.str("notes"), **_late_fee_terms(f, conn)}
             moved_in = f.date("moved_in", "Moved in")
-            person = person_fields(f)
+            person = {k: v for k, v in person_fields(f).items() if k != "notes"}  # Notes here are the tenancy's
             f.check()
             if main:
                 tenants.save_tenant(conn, main[0]["id"], person)
@@ -274,29 +286,31 @@ def edit(lease_id: int):
             if rent is not None and billed:
                 # Past bills stay as they were. The rent typed here is the rent from the next bill on,
                 # so it replaces any change already scheduled from then (typing the current rent cancels it).
-                eff = _next_due(lease)
+                eff = _next_due(conn, lease)
                 if rent != _rent_on(conn, lease, eff):
                     conn.execute("DELETE FROM lease_rent_changes WHERE lease_id = ? AND effective_date >= ?",
                                  (lease_id, eff.isoformat()))
                     if rent != _rent_on(conn, lease, eff):
                         leases.add_rent_change(conn, lease_id, eff.isoformat(), rent)
-                        flash(f"The new rent starts with the bill due {eff.isoformat()}.", "info")
+                        notes.append(f"The new rent starts with the bill due {eff.isoformat()}.")
                     else:
-                        flash("The rent change was cancelled. The rent stays the same.", "info")
+                        notes.append("The rent change was cancelled. The rent stays the same.")
             elif rent is not None and rent != lease["rent_cents"]:
                 fields["rent_cents"] = rent
             leases.update_terms(conn, lease_id, fields)
             if moved_in and (moved_in != _moved_in(lease) or f.bool("bill_from_move_in")):
                 leases.bill_from_move_in(conn, lease_id, moved_in, today())
-                flash(f"Rent is now billed from {moved_in}. If they already paid past months, "
-                      "use “Fill in past rent” below.", "info")
+                notes.append(f"Rent is now billed from {moved_in}. If they already paid past months, "
+                             "use “Fill in past rent” below.")
             else:
                 rent_posting.post_rent(conn, today(), [lease_id])
         if r["done"]:
+            for note in notes:
+                flash(note, "info")
             return _back(lease_id)
         values = request.form
     else:
-        values = {"rent": cents_to_input(_rent_on(conn, lease, _next_due(lease))),
+        values = {"rent": cents_to_input(_rent_on(conn, lease, _next_due(conn, lease))),
                   "rent_due_day": str(lease["rent_due_day"]),
                   "late_fee": cents_to_input(lease["late_fee_flat_cents"]) if lease["late_fee_type"] == "flat" else "",
                   "grace_days": str(lease["late_fee_grace_days"]), "notes": lease["notes"] or "",
@@ -345,7 +359,7 @@ def statement(lease_id: int):
         entries = [e for e in entries if e["date"] >= start]
     if request.args.get("format") == "xlsx":
         names = leases.tenant_names(conn, lease_id) or "Tenant"
-        return excel_download(excel.workbook(excel.history_sheet(names, entries)),
+        return excel_download(excel.workbook(excel.history_sheet(names, entries, start, opening)),
                               f"payment-history-{names}-{today().isoformat()}")
     return render_template("leases/statement.html", lease=lease, entries=entries,
                            opening=opening, start=start, names=leases.tenant_names(conn, lease_id),

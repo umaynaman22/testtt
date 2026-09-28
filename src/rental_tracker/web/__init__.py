@@ -81,7 +81,7 @@ def run_catch_up_if_due() -> None:
         result = startup.run_catch_up(conn, t)
         try:
             backup.run_scheduled_backups(conn, st.data)
-        except OSError as e:  # never block the app because a backup drive is missing or full
+        except (OSError, sqlite3.Error) as e:  # never block the app because a backup drive is missing or full
             log.error("scheduled backup failed: %s", e)
             flash(f"Automatic backup failed: {e}", "error")
         st.last_catch_up = t

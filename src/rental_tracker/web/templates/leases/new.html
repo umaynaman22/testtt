@@ -23,7 +23,7 @@
     <div class="form-grid" style="margin-top:8px">
       {{ m.money("late_fee", "Late fee", help="Blank = no late fee") }}
       {{ m.input("grace_days", "Days before rent counts as late", type="number", attrs='min="0" max="60"') }}
-      {{ m.date("billing_start", "Start billing rent from", help="Blank = from the move-in date") }}
+      {{ m.date("billing_start", "Start billing rent from", help="Blank = from the move-in date. Billing starts with this date's month.") }}
       {{ m.textarea("notes", "Notes") }}
     </div>
   </details>

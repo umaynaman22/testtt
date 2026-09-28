@@ -41,8 +41,10 @@ def post_rent(conn: sqlite3.Connection, today: date, lease_ids: list[int] | None
         end = parse_date(lease["end_date"]) if lease["status"] == "active" and lease["end_date"] else None
         changes = [(parse_date(r["effective_date"]), r["rent_cents"]) for r in conn.execute(
             "SELECT effective_date, rent_cents FROM lease_rent_changes WHERE lease_id = ?", (lease["id"],))]
+        # carry on from the last bill still on the account; deleted months keep a hidden row, so the
+        # unique index stops them being billed again, but they mustn't hide the months before them
         last = conn.execute("SELECT MAX(period) FROM charges WHERE lease_id = ? AND source = 'auto' "
-                            "AND charge_type = 'rent'", (lease["id"],)).fetchone()[0]
+                            "AND charge_type = 'rent' AND voided_at IS NULL", (lease["id"],)).fetchone()[0]
         from_period = max(last or "", billing_start.isoformat()[:7]) or None
         for plan in plan_charges(start=start, end=end, due_day=lease["rent_due_day"],
                                  base_cents=lease["rent_cents"], changes=changes,

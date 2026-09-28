@@ -60,6 +60,8 @@ def _validate_terms(t: dict[str, Any]) -> None:
         t["late_fee_grace_days"] = 5
     if t["late_fee_grace_days"] < 0:
         raise ServiceError("Grace days cannot be negative")
+    if (t.get("late_fee_flat_cents") or 0) < 0:
+        raise ServiceError("The late fee can't be negative")
 
 
 def create_lease(conn: sqlite3.Connection, *, unit_id: int, tenants: list[tuple[int, str]],
@@ -117,6 +119,7 @@ def update_terms(conn: sqlite3.Connection, lease_id: int, fields: dict[str, Any]
     data = {k: fields[k] for k in TERM_FIELDS if k in fields}
     merged = {**dict(lease), **data}
     _validate_terms(merged)
+    data = {k: merged[k] for k in data}  # with the defaults and fixes the check made
     if "end_date" in fields and lease["status"] in ("draft", "future", "active"):
         end = parse_date(fields["end_date"]).isoformat() if fields["end_date"] else None
         if end and end < lease["start_date"]:
@@ -159,7 +162,9 @@ def bill_from_move_in(conn: sqlite3.Connection, lease_id: int, move_in: str, tod
     conn.execute("UPDATE leases SET start_date = ?, move_in_date = ?, billing_start_date = NULL, status = ?, "
                  "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?",
                  (new.isoformat(), new.isoformat(), status, lease_id))
-    conn.execute("DELETE FROM charges WHERE lease_id = ? AND source = 'auto' AND charge_type = 'rent'", (lease_id,))
+    # rebuild the rent bills, but keep the hidden rows of months the user deleted so they stay deleted
+    conn.execute("DELETE FROM charges WHERE lease_id = ? AND source = 'auto' AND charge_type = 'rent' "
+                 "AND NOT (voided_at IS NOT NULL AND void_reason = 'Deleted')", (lease_id,))
     conn.execute("DELETE FROM charges WHERE lease_id = ? AND source = 'auto' AND charge_type = 'late_fee' "
                  "AND period < ?", (lease_id, new.isoformat()[:7]))  # no late fees before they lived there
     audit(conn, "bill_from_move_in", "lease", lease_id, {"move_in": new.isoformat(), "status": status})
