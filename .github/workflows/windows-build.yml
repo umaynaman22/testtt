@@ -86,8 +86,12 @@ jobs:
           if ($r.StatusCode -ne 403) { throw "expected the locked page without the launch token, got $($r.StatusCode)" }
           $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
           Invoke-WebRequest (Get-Content $urlFile -Raw).Trim() -WebSession $s | Out-Null
-          foreach ($page in @("/", "/properties", "/tenants", "/leases/1", "/rent-day", "/payments", "/late", "/reports/rent-roll",
-                              "/tenants?format=xlsx", "/reports/everything.xlsx")) {
+          foreach ($page in @("/tenants?format=xlsx", "/reports/everything.xlsx")) {
+            $r = Invoke-WebRequest "$base$page" -WebSession $s -SkipHttpErrorCheck
+            Write-Host "$page -> $($r.StatusCode) $($r.Headers['Content-Type'])"
+            if ($r.StatusCode -ne 200 -or "$($r.Headers['Content-Type'])" -notlike "*spreadsheetml*") { throw "$page failed" }
+          }
+          foreach ($page in @("/properties", "/tenants", "/leases/1", "/rent-day", "/payments", "/late", "/reports/rent-roll", "/")) {
             $r = Invoke-WebRequest "$base$page" -WebSession $s -SkipHttpErrorCheck
             Write-Host "$page -> $($r.StatusCode)"
             if ($r.StatusCode -ne 200) { throw "$page failed" }
